@@ -35,3 +35,18 @@ class Meeting(MeetingBase):
 
     class Config:
         from_attributes = True
+
+class UserBase(BaseModel):
+    email: str
+    username: str | None = None
+    avatar_url: str | None = None
+
+class UserCreate(UserBase):
+    github_token: str
+
+class User(UserBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

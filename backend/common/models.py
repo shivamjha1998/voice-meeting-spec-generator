@@ -69,3 +69,13 @@ class Task(Base):
     github_issue_number = Column(Integer, nullable=True)
 
     specification = relationship("Specification", back_populates="tasks")
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True)
+    username = Column(String)
+    avatar_url = Column(String)
+    github_token = Column(String) #In prod, encrypt this!
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
