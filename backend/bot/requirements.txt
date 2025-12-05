@@ -2,3 +2,6 @@ requests
 pyaudio
 openai
 python-dotenv
+selenium
+webdriver-manager
+redis

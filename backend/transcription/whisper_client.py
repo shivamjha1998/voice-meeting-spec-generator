@@ -1,17 +1,31 @@
 import os
-import time
+import io
+from openai import OpenAI
 
 class WhisperClient:
-    def __init__(self, api_key: str = None):
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+    def __init__(self):
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            print("⚠️ WARNING: OPENAI_API_KEY is not set. Transcription will fail.")
+        self.client = OpenAI(api_key=api_key)
 
-    def transcribe_audio(self, audio_file_path: str) -> str:
-        print(f"Transcribing audio file: {audio_file_path}")
-        # Simulate API latency
-        time.sleep(2)
-        # Return mock transcript
-        return "This is a mock transcript of the meeting. We discussed project requirements and timelines."
+    def transcribe_stream(self, audio_bytes: bytes) -> str:
+        """
+        Sends audio bytes to OpenAI Whisper API.
+        """
+        try:
+            # OpenAI API expects a file-like object with a name
+            # We wrap the raw bytes in BytesIO
+            audio_file = io.BytesIO(audio_bytes)
+            audio_file.name = "chunk.wav" 
 
-    def transcribe_stream(self, audio_chunk: bytes) -> str:
-        # Real-time transcription simulation
-        return " ...streamed text... "
+            # Call Whisper API
+            transcript = self.client.audio.transcriptions.create(
+                model="whisper-1", 
+                file=audio_file,
+                language="en" # Forcing English improves accuracy for now
+            )
+            return transcript.text
+        except Exception as e:
+            print(f"❌ Whisper API Error: {e}")
+            return ""
