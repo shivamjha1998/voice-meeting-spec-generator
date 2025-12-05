@@ -50,3 +50,35 @@ class User(UserBase):
 
     class Config:
         from_attributes = True
+
+class TranscriptBase(BaseModel):
+    speaker: str
+    text: str
+
+class TranscriptCreate(TranscriptBase):
+    meeting_id: int
+
+class Transcript(TranscriptBase):
+    id: int
+    meeting_id: int
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
+class SpecificationBase(BaseModel):
+    content: str
+    version: str = "1.0.0"
+
+class SpecificationCreate(SpecificationBase):
+    project_id: int
+    meeting_id: int
+
+class Specification(SpecificationBase):
+    id: int
+    project_id: int
+    meeting_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

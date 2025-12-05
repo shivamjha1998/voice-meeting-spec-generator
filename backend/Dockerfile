@@ -15,10 +15,12 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements files
 COPY backend/api/requirements.txt /tmp/api_reqs.txt
 COPY backend/bot/requirements.txt /tmp/bot_reqs.txt
+COPY backend/transcription/requirements.txt /tmp/transcription_reqs.txt
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r /tmp/api_reqs.txt
 RUN pip install --no-cache-dir -r /tmp/bot_reqs.txt
+RUN pip install --no-cache-dir -r /tmp/transcription_reqs.txt
 # Install additional dependencies for other services not yet in requirements.txt
 RUN pip install --no-cache-dir google-cloud-texttospeech
 

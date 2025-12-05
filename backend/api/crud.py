@@ -57,3 +57,10 @@ def update_user_token(db: Session, user_id: int, new_token: str):
         db.commit()
         db.refresh(user)
     return user
+
+def get_meeting_transcripts(db: Session, meeting_id: int):
+    return db.query(models.Transcript).filter(models.Transcript.meeting_id == meeting_id).order_by(models.Transcript.timestamp).all()
+
+def get_meeting_specification(db: Session, meeting_id: int):
+    return db.query(models.Specification).filter(models.Specification.meeting_id == meeting_id).first()
+

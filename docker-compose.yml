@@ -57,6 +57,7 @@ services:
       DATABASE_URL: postgresql://user:password@db:5432/voice_meeting_db
       REDIS_URL: redis://redis:6379/0
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY}
     command: python -m backend.transcription.main
     volumes:
       - .:/app

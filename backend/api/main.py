@@ -140,3 +140,34 @@ def read_meeting(meeting_id: int, db: Session = Depends(database.get_db)):
     if db_meeting is None:
         raise HTTPException(status_code=404, detail="Meeting not found")
     return db_meeting
+
+@app.get("/meetings/{meeting_id}/transcripts", response_model=List[schemas.Transcript])
+def read_meeting_transcripts(meeting_id: int, db: Session = Depends(database.get_db)):
+    transcripts = crud.get_meeting_transcripts(db, meeting_id=meeting_id)
+    return transcripts
+
+# Get Specification for a Meeting
+@app.post("/meetings/{meeting_id}/generate")
+def generate_specification(meeting_id: int, db: Session = Depends(database.get_db)):
+    """Triggers the AI Service to generate a spec for the given meeting."""
+    # 1. Check if meeting exists
+    meeting = crud.get_meeting(db, meeting_id=meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    
+    # 2. Push job to Redis Queue
+    try:
+        redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+        job_data = {"meeting_id": meeting.id, "project_id": meeting.project_id}
+        redis_client.rpush("spec_generation_queue", json.dumps(job_data))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to queue task: {str(e)}")
+
+    return {"status": "queued", "message": "Specification generation started"}
+
+@app.get("/meetings/{meeting_id}/specification", response_model=schemas.Specification)
+def read_meeting_specification(meeting_id: int, db: Session = Depends(database.get_db)):
+    spec = crud.get_meeting_specification(db, meeting_id=meeting_id)
+    if not spec:
+        raise HTTPException(status_code=404, detail="Specification not found (or still generating)")
+    return spec
