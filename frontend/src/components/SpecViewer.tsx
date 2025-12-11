@@ -10,7 +10,9 @@ interface Specification {
 const SpecViewer: React.FC = () => {
     const [spec, setSpec] = useState<Specification | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [isCreatingIssues, setIsCreatingIssues] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [issueResult, setIssueResult] = useState<string | null>(null);
     const meetingId = 3; // Hardcoded for MVP
 
     // Function to check if a spec exists
@@ -74,6 +76,33 @@ const SpecViewer: React.FC = () => {
         a.click();
     };
 
+    const handleCreateIssues = async () => {
+        setIsCreatingIssues(true);
+        setIssueResult(null);
+        try {
+            const res = await fetch(`http://localhost:8000/meetings/${meetingId}/create-issues`, {
+                method: 'POST'
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                const count = data.created_issues.length;
+                const errors = data.errors || [];
+                if (errors.length > 0) {
+                    setIssueResult(`Created ${count} issues. Failed: ${errors.length}`);
+                } else {
+                    setIssueResult(`Successfully created ${count} GitHub Issues!`);
+                }
+            } else {
+                setIssueResult(`Error: ${data.detail || "Failed to create issues"}`);
+            }
+        } catch (err) {
+            setIssueResult("Network error creating issues.");
+        } finally {
+            setIsCreatingIssues(false);
+        }
+    };
+
     return (
         <div className="border p-4 rounded shadow bg-white mt-6 h-96 flex flex-col">
             <div className="flex justify-between items-center mb-4">
@@ -119,12 +148,21 @@ const SpecViewer: React.FC = () => {
                         >
                             Export Markdown
                         </button>
-                        <button className="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded transition">
-                            Create GitHub Issues
+                        <button
+                            onClick={handleCreateIssues}
+                            disabled={isCreatingIssues}
+                            className={`px-4 py-2 rounded transition text-white ${isCreatingIssues ? "bg-gray-500 cursor-wait" : "bg-gray-800 hover:bg-gray-900"}`}
+                        >
+                            {isCreatingIssues ? "Creating..." : "Create GitHub Issues"}
                         </button>
                     </>
                 )}
             </div>
+            {issueResult && (
+                <div className="mt-2 text-sm text-center font-semibold text-blue-700">
+                    {issueResult}
+                </div>
+            )}
         </div>
     );
 };

@@ -54,3 +54,39 @@ class LLMClient:
         except Exception as e:
             print(f"HF Error (Spec Gen): {e}")
             return "# Error\nCould not generate specification."
+
+    def extract_tasks(self, spec_content: str) -> str:
+        """
+        Extracts tasks from the specification content as a JSON string.
+        Expected format: {"tasks": [{"title": "...", "description": "..."}]}
+        """
+        system_prompt = """
+        You are a Technical Project Manager. Given a Project Specification, extract actionable tasks.
+        Return ONLY a raw JSON object (no markdown formatting, no backticks).
+        Format:
+        {
+            "tasks": [
+                {
+                    "title": "Short title of the task",
+                    "description": "Detailed description suitable for a GitHub Issue body"
+                }
+            ]
+        }
+        """
+        
+        try:
+            response = self.client.chat_completion(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": spec_content}
+                ],
+                max_tokens=2000
+            )
+            content = response.choices[0].message.content
+            # Clean up potential markdown code blocks if the model captures them
+            content = content.replace("```json", "").replace("```", "").strip()
+            return content
+        except Exception as e:
+            print(f"HF Error (Task Extraction): {e}")
+            return '{"tasks": []}'
