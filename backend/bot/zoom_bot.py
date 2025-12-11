@@ -17,7 +17,7 @@ class ZoomBot:
         self.is_connected = False
         self.recorder = AudioRecorder(filename="zoom_meeting.wav")
         self.redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
-        self.meeting_id = 1
+        self.meeting_id = 3
 
     def join_meeting(self, meeting_url: str):
         """

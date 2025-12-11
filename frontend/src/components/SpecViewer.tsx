@@ -11,7 +11,7 @@ const SpecViewer: React.FC = () => {
     const [spec, setSpec] = useState<Specification | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const meetingId = 1; // Hardcoded for MVP
+    const meetingId = 3; // Hardcoded for MVP
 
     // Function to check if a spec exists
     const fetchSpec = async () => {

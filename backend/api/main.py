@@ -1,10 +1,13 @@
 import os
 import httpx
+import json
+import redis
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from typing import List
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.common import models, database
 from backend.api import schemas, crud
@@ -18,6 +21,14 @@ CALLBACK_URL = os.getenv("CALLBACK_URL", "http://localhost:8000/auth/github/call
 models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI(title="Voice Meeting Spec Generator API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def read_root():

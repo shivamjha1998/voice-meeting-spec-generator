@@ -8,3 +8,4 @@ pydantic-settings
 httpx
 python-dotenv
 redis
+huggingface_hub

@@ -1,31 +1,37 @@
 import os
 import io
-from openai import OpenAI
+import requests
 
 class WhisperClient:
     def __init__(self):
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            print("⚠️ WARNING: OPENAI_API_KEY is not set. Transcription will fail.")
-        self.client = OpenAI(api_key=api_key)
+        self.api_key = os.getenv("HUGGING_FACE_KEY") or os.getenv("OPENAI_API_KEY")
+        if not self.api_key:
+            print("⚠️ WARNING: HUGGING_FACE_KEY is not set. Transcription will fail.")
+        
+        # Using Whisper v3 optimized for speed on HF
+        self.model_url = "https://api-inference.huggingface.co/models/openai/whisper-large-v3-turbo"
+        self.headers = {"Authorization": f"Bearer {self.api_key}"}
 
     def transcribe_stream(self, audio_bytes: bytes) -> str:
         """
-        Sends audio bytes to OpenAI Whisper API.
+        Sends audio bytes to Hugging Face Inference API for ASR.
         """
         try:
-            # OpenAI API expects a file-like object with a name
-            # We wrap the raw bytes in BytesIO
-            audio_file = io.BytesIO(audio_bytes)
-            audio_file.name = "chunk.wav" 
-
-            # Call Whisper API
-            transcript = self.client.audio.transcriptions.create(
-                model="whisper-1", 
-                file=audio_file,
-                language="en" # Forcing English improves accuracy for now
+            # HF Inference API expects raw bytes for audio files
+            response = requests.post(
+                self.model_url, 
+                headers=self.headers, 
+                data=audio_bytes
             )
-            return transcript.text
+            
+            if response.status_code != 200:
+                print(f"❌ HF Whisper Error {response.status_code}: {response.text}")
+                return ""
+
+            # Response format: {"text": "transcription..."}
+            result = response.json()
+            return result.get("text", "")
+
         except Exception as e:
             print(f"❌ Whisper API Error: {e}")
             return ""

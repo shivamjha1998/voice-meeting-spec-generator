@@ -62,5 +62,5 @@ def get_meeting_transcripts(db: Session, meeting_id: int):
     return db.query(models.Transcript).filter(models.Transcript.meeting_id == meeting_id).order_by(models.Transcript.timestamp).all()
 
 def get_meeting_specification(db: Session, meeting_id: int):
-    return db.query(models.Specification).filter(models.Specification.meeting_id == meeting_id).first()
+    return db.query(models.Specification).filter(models.Specification.meeting_id == meeting_id).order_by(models.Specification.created_at.desc()).first()
 
