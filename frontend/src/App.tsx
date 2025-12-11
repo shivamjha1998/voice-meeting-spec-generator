@@ -5,6 +5,9 @@ import SpecViewer from './components/SpecViewer';
 
 function App() {
   const [userId, setUserId] = useState<string | null>(null);
+  const [currentMeetingId, setCurrentMeetingId] = useState<number | null>(null);
+  const [projectId, setCurrentProjectId] = useState<number | null>(null);
+
 
   useEffect(() => {
     // 1. Check if user_id is in the URL (returning from GitHub Login)
@@ -79,18 +82,28 @@ function App() {
         </div>
       </nav>
       <main className="container mx-auto mt-8 p-4">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {currentMeetingId ? (
           <div>
-            <Dashboard />
+            <button
+              onClick={() => setCurrentMeetingId(null)}
+              className="mb-4 text-blue-600 hover:underline"
+            >
+              &larr; Back to Dashboard
+            </button>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <MeetingMonitor meetingId={currentMeetingId} />
+              <SpecViewer meetingId={currentMeetingId} />
+            </div>
           </div>
-          <div>
-            <MeetingMonitor />
-            <SpecViewer />
-          </div>
-        </div>
+        ) : (
+          <Dashboard
+            userId={userId}
+            onSelectMeeting={(id) => setCurrentMeetingId(id)}
+          />
+        )}
       </main>
     </div>
   );
 }
 
-export default App;
+export default App; 

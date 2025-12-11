@@ -76,7 +76,6 @@ async def github_callback(code: str, db: Session = Depends(database.get_db)):
         )
         user_data = user_res.json()
         
-        # GitHub doesn't always return email in the public profile, fetch it explicitly
         email_res = await client.get(
             "https://api.github.com/user/emails",
             headers={"Authorization": f"Bearer {access_token}"}
@@ -92,10 +91,8 @@ async def github_callback(code: str, db: Session = Depends(database.get_db)):
     existing_user = crud.get_user_by_email(db, email=user_email)
     
     if existing_user:
-        # Update token if user exists
         db_user = crud.update_user_token(db, existing_user.id, access_token)
     else:
-        # Create new user
         new_user = schemas.UserCreate(
             email=user_email,
             username=user_data.get("login"),
@@ -105,8 +102,6 @@ async def github_callback(code: str, db: Session = Depends(database.get_db)):
         db_user = crud.create_user(db, new_user)
 
     # 4. Redirect to Frontend (Dashboard) with a session/cookie
-    # For simplicity, we are passing the user_id in the URL, but in production, 
-    # you should use JWT or Session Cookies.
     return RedirectResponse(f"http://localhost:5173?user_id={db_user.id}")
 
 @app.get("/health")
@@ -186,7 +181,7 @@ def read_meeting_specification(meeting_id: int, db: Session = Depends(database.g
     return spec
 
 @app.post("/meetings/{meeting_id}/create-issues")
-def create_github_issues(meeting_id: int, db: Session = Depends(database.get_db), user_id: int = 1): # Pass user_id properly in prod
+def create_github_issues(meeting_id: int, db: Session = Depends(database.get_db), user_id: int = 1):
     """Extracts tasks from spec and creates GitHub Issues."""
     # 1. Get the Spec
     spec = crud.get_meeting_specification(db, meeting_id)
@@ -196,8 +191,6 @@ def create_github_issues(meeting_id: int, db: Session = Depends(database.get_db)
     # 2. Get User for GitHub Token
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        # Fallback to finding by email if ID 1 isn't right, or just fail
-        # For MVP we assume seed data user exists
         raise HTTPException(status_code=400, detail="User not found")
         
     if not user.github_token:
@@ -245,3 +238,27 @@ def create_github_issues(meeting_id: int, db: Session = Depends(database.get_db)
             errors.append(f"Failed to create '{task['title']}': {res.text}")
 
     return {"status": "success", "created_issues": created_issues, "errors": errors}
+
+@app.get("/user/repos")
+def read_user_repos(user_id: int, db: Session = Depends(database.get_db)):
+    """Fetch the list of repositories for the given user"""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user or not user.github_token:
+        raise HTTPException(status_code=401, detail="User not authorised with GitHub")
+
+    headers = {
+        "Authorization": f"token {user.github_token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+
+    response = requests.get("https://api.github.com/user/repos?sort=updated&per_page=100", headers=headers)
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail="Failed to fetch repositories from GitHub")
+
+    repos = response.json()
+
+    return [
+        {"id": r["id"], "name": r["name"], "full_name": r["full_name"], "html_url": r["html_url"]} 
+        for r in repos
+    ]

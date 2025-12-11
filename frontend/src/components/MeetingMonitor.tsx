@@ -8,10 +8,13 @@ interface Transcript {
     timestamp: string;
 }
 
-const MeetingMonitor: React.FC = () => {
+interface Props {
+    meetingId: number;
+}
+
+const MeetingMonitor: React.FC<Props> = ({ meetingId }) => {
     const [transcripts, setTranscripts] = useState<Transcript[]>([]);
     const [status, setStatus] = useState<string>("Disconnected");
-    const meetingId = 1; // Hardcoded for MVP matching the Bot's default ID
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll to bottom when new transcripts arrive
@@ -24,22 +27,19 @@ const MeetingMonitor: React.FC = () => {
     }, [transcripts]);
 
     useEffect(() => {
+        // Reset transcripts when switching meetings
+        setTranscripts([]);
+        setStatus("Disconnected");
+    }, [meetingId]);
+
+    useEffect(() => {
         let interval: ReturnType<typeof setInterval> | undefined;
-
         if (status === "Connected") {
-            // Initial Fetch
             fetchTranscripts();
-
-            // Poll every 2 seconds
             interval = setInterval(fetchTranscripts, 2000);
         }
-
-        return () => {
-            if (interval) {
-                clearInterval(interval);
-            }
-        };
-    }, [status]);
+        return () => { if (interval) clearInterval(interval); };
+    }, [status, meetingId]);
 
     const fetchTranscripts = () => {
         fetch(`http://localhost:8000/meetings/${meetingId}/transcripts`)
@@ -47,12 +47,8 @@ const MeetingMonitor: React.FC = () => {
                 if (!res.ok) throw new Error("Failed to fetch");
                 return res.json();
             })
-            .then(data => {
-                // Ideally, compare length or ID to avoid re-renders if no change, 
-                // but React handles this reasonably well for small lists.
-                setTranscripts(data);
-            })
-            .catch(err => console.error("Error fetching transcripts:", err));
+            .then(data => setTranscripts(data))
+            .catch(err => console.error(err));
     };
 
     return (

@@ -7,34 +7,41 @@ interface Specification {
     created_at: string;
 }
 
-const SpecViewer: React.FC = () => {
+interface Props {
+    meetingId: number;
+}
+
+const SpecViewer: React.FC<Props> = ({ meetingId }) => {
     const [spec, setSpec] = useState<Specification | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isCreatingIssues, setIsCreatingIssues] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [issueResult, setIssueResult] = useState<string | null>(null);
-    const meetingId = 3; // Hardcoded for MVP
 
     // Function to check if a spec exists
     const fetchSpec = async () => {
         try {
+            // Use prop meetingId
             const res = await fetch(`http://localhost:8000/meetings/${meetingId}/specification`);
             if (res.ok) {
                 const data = await res.json();
                 setSpec(data);
-                setIsLoading(false); // Stop loading if found
+                setIsLoading(false);
                 return true;
+            } else {
+                setSpec(null);
             }
         } catch (err) {
-            console.error("Error fetching spec:", err);
+            console.error(err);
         }
         return false;
     };
 
-    // Initial check on load
     useEffect(() => {
+        setSpec(null);
+        setError(null);
         fetchSpec();
-    }, []);
+    }, [meetingId]);
 
     // Polling effect: If loading, check every 3 seconds
     useEffect(() => {
