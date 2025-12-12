@@ -21,45 +21,112 @@ class ZoomBot:
 
     def join_meeting(self, meeting_url: str):
         """
-        Joins a Zoom meeting using Selenium Webdriver.
-        Note: This requires Chrome to be installed on the machine running this code.
+        Joins a Zoom meeting using undetected-chromedriver.
         """
+        import undetected_chromedriver as uc
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+        
         print(f"🤖 Bot attempting to join Zoom: {meeting_url}")
         
-        # Setup Chrome Options (Headless typically blocked by Zoom, using standard)
-        chrome_options = Options()
-        # chrome_options.add_argument("--headless") # Zoom often blocks headless
-        chrome_options.add_argument("--use-fake-ui-for-media-stream") # Auto-allow mic/cam
-        chrome_options.add_argument("--disable-notifications")
-        
+        # Transform URL to Web Client (WC) format to bypass app prompts
+        import re
+        # Regex to capture domain, meeting id, and existing query params
+        # Handles /j/ (join) and /s/ (start) links
+        pattern = r"(https?://.*?zoom\.us)/[js]/(\d+)(.*)"
+        match = re.search(pattern, meeting_url)
+        if match:
+             base_url, meeting_id, rest = match.groups()
+             # 'rest' contains ?pwd=... or similar
+             # Construct WC url
+             wc_url = f"{base_url}/wc/{meeting_id}/join{rest}"
+             print(f"🔄 Converted to Web Client URL: {wc_url}")
+             meeting_url = wc_url
+        else:
+             print("⚠️ URL did not match standard Zoom pattern, using as-is.")
+
+        # Setup Chrome Options
+        options = uc.ChromeOptions()
+        options.add_argument("--use-fake-ui-for-media-stream")
+        options.add_argument("--disable-notifications")
+
         try:
             # Initialize Driver
-            self.driver = webdriver.Chrome(
-                service=Service(ChromeDriverManager().install()), 
-                options=chrome_options
-            )
+            self.driver = uc.Chrome(options=options)
             
-            # 1. Go to URL
+            # 1. Go to URL (Now directly to Web Client)
             self.driver.get(meeting_url)
-            time.sleep(3) # Wait for redirect logic
-
-            # 2. Handle "Open Zoom Meetings?" popup (Selenium can't click native browser popups easily)
-            # The trick is usually to click "Join from Browser" link if it appears, 
-            # or we rely on the user having the app. 
-            # For a pure bot, we often try to force "Join from Browser".
             
-            # Attempt to find "Join from your browser" link
+            # 1.5 Handle Cookie Popup (if present)
             try:
-                # Sometimes this link is hidden behind "Launch Meeting"
-                launch_btn = self.driver.find_element(By.CLASS_NAME, "_Tb0_oF2_0") # Class names change often!
-                # This part is brittle as Zoom changes class names. 
-                # Better strategy: Look for text
-                pass
+                cookie_btn = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[@id='onetrust-accept-btn-handler' or contains(text(), 'Agree') or contains(text(), 'Accept') or contains(@class, 'osano-cm-accept-all')]"))
+                )
+                cookie_btn.click()
+                print("✅ Accepted Cookies")
+            except:
+                print("No cookie popup found (or timed out).")
+
+            # 2. Handle "Your Name" Input
+            try:
+                selectors = [
+                    "//input[contains(@id, 'name')]",
+                    "//input[@id='inputname']",
+                    "//input[@placeholder='Your Name']"
+                ]
+                
+                name_input = None
+                for selector in selectors:
+                    try:
+                        name_input = WebDriverWait(self.driver, 5).until(
+                            EC.presence_of_element_located((By.XPATH, selector))
+                        )
+                        if name_input:
+                            break
+                    except:
+                        continue
+                
+                if not name_input:
+                    # Final try with longer wait on the most common one
+                    name_input = WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located((By.XPATH, "//input[@id='inputname']"))
+                    )
+
+                name_input.clear()
+                name_input.send_keys("AI Assistant Bot")
+                
+                # Check for and Click Join
+                join_btn = WebDriverWait(self.driver, 5).until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Join') and not(@disabled)]"))
+                )
+                join_btn.click()
+                
+            except Exception as e:
+                print(f"⚠️ Name input not found or not required. Saving screenshot to 'zoom_debug.png'. Error: {e}")
+                self.driver.save_screenshot("zoom_debug.png")
+
+            # 3. Handle "Agree" to Terms
+            try:
+                agree_btn = WebDriverWait(self.driver, 5).until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Agree') or contains(text(), 'I Agree')]"))
+                )
+                agree_btn.click()
             except:
                 pass
+                
+            # 4. Handle "Join with Computer Audio"
+            try:
+                join_audio_btn = WebDriverWait(self.driver, 15).until(
+                     EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Join Audio by Computer') or contains(text(), 'Join with Computer Audio')]"))
+                )
+                join_audio_btn.click()
+            except:
+                print("⚠️ 'Join Audio' button not found")
 
             self.is_connected = True
-            print("✅ Bot browser launched. Please manually click 'Join' if strictly automated flow fails.")
+            print("✅ Bot successfully loaded Zoom Web Client.")
+
             
         except Exception as e:
             print(f"❌ Failed to join Zoom: {e}")
@@ -102,9 +169,8 @@ class ZoomBot:
             if chunk:
                 # Prepare the message payload
                 message = {
-                    "meeting_id": 1, # Hardcoded ID for this test
+                    "meeting_id": 1,
                     "audio_data": base64.b64encode(chunk).decode('utf-8'),
                     "timestamp": time.time()
                 }
-                # Push to the SAME queue name the Transcription service is listening to
                 r.rpush("meeting_audio_queue", json.dumps(message))
