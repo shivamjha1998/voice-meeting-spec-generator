@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 def main():
-    print("🎧 Starting Transcription Service (ElevenLabs)...")
+    print("🎧 Starting Transcription Service (ElevenLabs + Diarization)...")
     
     try:
         redis_client = redis.from_url(REDIS_URL)
@@ -21,15 +21,12 @@ def main():
         return
 
     stt_client = ElevenLabsClient()
-    
     db = database.SessionLocal()
 
     print("📡 Listening for audio chunks on 'meeting_audio_queue'...")
     
     # Buffer for audio chunks
-    # 44100 Hz * 2 bytes * 1 channel = 88200 bytes/sec
-    # ElevenLabs Scribe likely needs > 0.5s. Let's buffer ~2 seconds (~176KB)
-    BUFFER_SIZE_BYTES = 200 * 1024 
+    BUFFER_SIZE_BYTES = 500 * 1024
     audio_buffer = bytearray()
     
     while True:
@@ -51,25 +48,62 @@ def main():
                         print(f"🔄 Processing buffer of size {len(audio_buffer)} bytes...")
                         
                         # Process the buffer
-                        text = stt_client.transcribe_stream(bytes(audio_buffer))
+                        result = stt_client.transcribe_stream(bytes(audio_buffer))
                         
-                        if text and text.strip():
-                            print(f"📝 Meeting {meeting_id}: {text}")
-                            save_transcript(db, meeting_id, text)
+                        if result:
+                            # Group words by speaker
+                            process_and_save_diarized(db, meeting_id, result)
                         
-                        # Clear buffer after processing
-                        # Note: In a real stream, you might want overlapping windows
+                        # Clear buffer
                         audio_buffer = bytearray()
                         
         except Exception as e:
             print(f"⚠️ Error processing chunk: {e}")
             time.sleep(1)
 
-def save_transcript(db: Session, meeting_id: int, text: str):
+def process_and_save_diarized(db: Session, meeting_id: int, transcription_result):
+    """
+    Groups words by speaker_id and saves them as transcript segments.
+    """
+    if not transcription_result or not hasattr(transcription_result, 'words'):
+        # Fallback for empty or error responses
+        if hasattr(transcription_result, 'text') and transcription_result.text:
+             save_transcript_segment(db, meeting_id, "Unknown", transcription_result.text)
+        return
+
+    current_speaker = None
+    current_text = []
+
+    for word in transcription_result.words:
+        speaker = getattr(word, 'speaker_id', 'speaker_0') or 'speaker_0'
+        text = word.text
+
+        # If speaker changes, save the accumulated text for the previous speaker
+        if current_speaker is not None and speaker != current_speaker:
+            full_sentence = " ".join(current_text).strip()
+            if full_sentence:
+                print(f"   🗣️ {current_speaker}: {full_sentence}")
+                save_transcript_segment(db, meeting_id, current_speaker, full_sentence)
+            current_text = []
+
+        current_speaker = speaker
+        current_text.append(text)
+
+    # Save the final buffer
+    if current_speaker and current_text:
+        full_sentence = " ".join(current_text).strip()
+        if full_sentence:
+            print(f"   🗣️ {current_speaker}: {full_sentence}")
+            save_transcript_segment(db, meeting_id, current_speaker, full_sentence)
+
+def save_transcript_segment(db: Session, meeting_id: int, speaker: str, text: str):
     try:
+        # Map speaker_id to speaker_name
+        formatted_speaker = speaker.replace("_", " ").title()
+
         transcript = models.Transcript(
             meeting_id=meeting_id,
-            speaker="Speaker", 
+            speaker=formatted_speaker,
             text=text
         )
         db.add(transcript)

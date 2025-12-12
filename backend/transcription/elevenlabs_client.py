@@ -24,27 +24,26 @@ class ElevenLabsClient:
         io_bytes.seek(0)
         return io_bytes
 
-    def transcribe_stream(self, audio_bytes: bytes) -> str:
+    def transcribe_stream(self, audio_bytes: bytes):
         """
-        Sends audio to ElevenLabs Scribe API.
+        Sends audio to ElevenLabs Scribe API with Diarization enabled.
+        Returns the full transcription object containing words/speakers.
         """
         try:
             # 1. Convert raw PCM to WAV container
-            # Note: Ensure these match your recorder.py settings (default: 44100Hz, 1ch, 16-bit)
             audio_file = self._add_wav_header(audio_bytes)
             
             # 2. Call ElevenLabs Scribe
-            # 'scribe_v1' is their speech-to-text model
             transcription = self.client.speech_to_text.convert(
                 file=audio_file,
                 model_id="scribe_v1",
-                tag_audio_events=False, # Set True if you want [laughter] tags
-                language_code="eng",    # Explicitly set for better accuracy
-                diarize=False
+                tag_audio_events=False,
+                language_code="eng",
+                diarize=True
             )
             
-            return transcription.text
+            return transcription
             
         except Exception as e:
             print(f"❌ ElevenLabs STT Error: {e}")
-            return ""
+            return None
