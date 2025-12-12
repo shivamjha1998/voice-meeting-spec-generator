@@ -1,14 +1,61 @@
 import time
-from backend.tts.google_tts import GoogleTTSClient
+import json
+import os
+import redis
+from backend.tts.elevenlabs_tts import ElevenLabsTTSClient
+
+# Redis Connection
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 def main():
-    print("Starting TTS Service...")
-    tts_client = GoogleTTSClient()
+    print("🗣️ Starting ElevenLabs TTS Service...")
     
-    # In a real scenario, this service would consume text from a queue
+    try:
+        redis_client = redis.from_url(REDIS_URL)
+        redis_client.ping()
+        print(f"✅ Connected to Redis at {REDIS_URL}")
+    except Exception as e:
+        print(f"❌ Failed to connect to Redis: {e}")
+        return
+
+    tts_client = ElevenLabsTTSClient()
+    
+    # Ensure shared audio directory exists
+    AUDIO_DIR = "/app/backend/temp_audio"
+    os.makedirs(AUDIO_DIR, exist_ok=True)
+
+    print("Fn Listening for jobs on 'speak_request_queue'...")
+
     while True:
-        time.sleep(10)
-        print("TTS Service Heartbeat")
+        try:
+            # Blocking pop
+            item = redis_client.blpop("speak_request_queue", timeout=5)
+            
+            if item:
+                _, data_str = item
+                data = json.loads(data_str)
+                text = data.get("text")
+                meeting_id = data.get("meeting_id")
+                
+                if text:
+                    filename = f"question_{meeting_id}_{int(time.time())}.mp3"
+                    file_path = os.path.join(AUDIO_DIR, filename)
+                    
+                    # 1. Generate Audio
+                    output_path = tts_client.synthesize_speech(text, output_file=file_path)
+                    
+                    if output_path:
+                        # 2. Notify Bot to Play
+                        playback_msg = {
+                            "meeting_id": meeting_id,
+                            "file_path": output_path
+                        }
+                        redis_client.rpush("audio_playback_queue", json.dumps(playback_msg))
+                        print(f"✅ Sent playback request for: {filename}")
+
+        except Exception as e:
+            print(f"⚠️ TTS Worker Error: {e}")
+            time.sleep(1)
 
 if __name__ == "__main__":
     main()

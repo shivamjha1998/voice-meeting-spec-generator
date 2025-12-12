@@ -1,11 +1,16 @@
 import time
 import sys
 import os
+import redis  # <--- ADDED
+import json   # <--- ADDED
 from backend.bot.zoom_bot import ZoomBot
 from backend.bot.meet_bot import GoogleMeetBot
 
 def main():
     print("🤖 Starting Meeting Bot Service...")
+    
+    # <--- ADDED: Initialize Redis Connection
+    redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
 
     # For testing purposes, check ENV var instead of blocking input
     print("\n--- TEST MODE ---")
@@ -25,7 +30,7 @@ def main():
         print("Detected Zoom URL.")
         bot = ZoomBot()
     elif "meet.google.com" in meeting_url:
-        print ("Detected Google Meet URL.")
+        print("Detected Google Meet URL.")
         bot = GoogleMeetBot()
     else:
         print("❌ Unsupported Platform. Please use a Zoom or Google Meet URL.")
@@ -42,7 +47,20 @@ def main():
         
         # Keep the script running to maintain the browser and audio stream
         while True:
-            time.sleep(1)
+            try:
+                # Check for audio playback requests
+                item = redis_client.lpop("audio_playback_queue")
+                if item:
+                    data = json.loads(item)
+                    file_path = data.get("file_path")
+                    if file_path:
+                        # Use the existing bot.recorder instance to play audio
+                        if hasattr(bot, 'recorder'):
+                            bot.recorder.play_audio(file_path)
+            except Exception as e:
+                pass  # Ignore redis/playback errors to keep bot alive
+            
+            time.sleep(0.1)
             
     except KeyboardInterrupt:
         print("\nStopping bot...")

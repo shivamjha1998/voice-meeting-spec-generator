@@ -90,3 +90,35 @@ class LLMClient:
         except Exception as e:
             print(f"HF Error (Task Extraction): {e}")
             return '{"tasks": []}'
+
+    def generate_clarifying_question(self, transcript_segment: str) -> str:
+        """
+        Analyzes a segment of the meeting to check for ambiguities.
+        Returns a short question if needed, or empty string if not.
+        """
+        system_prompt = """
+        You are a proactive Technical Project Manager in a meeting. 
+        Analyze the recent transcript. If there are ambiguous requirements, missing deadlines, or unclear technical details, ask a polite, very short clarifying question (max 1 sentence).
+        If everything is clear, return "NO_QUESTION".
+        """
+        
+        try:
+            response = self.client.chat_completion(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": transcript_segment}
+                ],
+                max_tokens=60  # Keep it short
+            )
+            content = response.choices[0].message.content.strip()
+            
+            if "NO_QUESTION" in content or len(content) < 5:
+                return ""
+            
+            # Clean up any accidental quotes
+            return content.replace('"', '')
+            
+        except Exception as e:
+            print(f"HF Error (Question Gen): {e}")
+            return ""

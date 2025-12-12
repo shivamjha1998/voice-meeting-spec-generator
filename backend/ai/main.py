@@ -78,5 +78,33 @@ def process_meeting(meeting_id: int, project_id: int, llm_client: LLMClient):
     finally:
         db.close()
 
+def run_realtime_analysis(redis_client, llm_client):
+    """
+    Listens for live transcript segments and generates questions.
+    """
+    print("🧠 AI Analyst listening on 'conversation_analysis_queue'...")
+    while True:
+        try:
+            item = redis_client.blpop("conversation_analysis_queue", timeout=1)
+            if item:
+                _, data_str = item
+                data = json.loads(data_str)
+                meeting_id = data.get("meeting_id")
+                text = data.get("text")
+                
+                # Ask LLM if we should intervene
+                question = llm_client.generate_clarifying_question(text)
+                
+                if question:
+                    print(f"💡 Generated Question: {question}")
+                    # Send to TTS Queue
+                    redis_client.rpush("speak_request_queue", json.dumps({
+                        "meeting_id": meeting_id,
+                        "text": question
+                    }))
+        except Exception as e:
+            print(f"Analysis Error: {e}")
+            time.sleep(1)
+
 if __name__ == "__main__":
     main()
