@@ -15,11 +15,12 @@ from webdriver_manager.chrome import ChromeDriverManager
 from .recorder import AudioRecorder
 
 class GoogleMeetBot:
-    def __init__(self):
+    def __init__(self, meeting_id=1):
         self.driver = None
         self.is_connected = False
         self.recorder = AudioRecorder(filename="meet_meeting.wav")
         self.redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+        self.meeting_id = meeting_id
 
     def join_meeting(self, meeting_url: str):
         """
@@ -33,11 +34,13 @@ class GoogleMeetBot:
         # Allow microphone/camera permissions automatically (needed for the site to load properly)
         options.add_argument("--use-fake-ui-for-media-stream")
         options.add_argument("--disable-notifications")
+        options.add_argument("--autoplay-policy=no-user-gesture-required")
+        options.add_argument(f"--user-data-dir={os.getcwd()}/chrome_profile")
         # Default to non-headless for now as headless is easier to detect
         # options.add_argument("--headless") 
 
         try:
-            self.driver = uc.Chrome(options=options)
+            self.driver = uc.Chrome(options=options, version_main=143)
             
             # 2. Go to the URL
             self.driver.get(meeting_url)
@@ -68,11 +71,14 @@ class GoogleMeetBot:
 
             # 4. Click 'Join now' or 'Ask to join'
             try:
+                # Find the button first to check its text
                 join_button = WebDriverWait(self.driver, 10).until(
                     EC.element_to_be_clickable((By.XPATH, "//span[contains(text(), 'Join now') or contains(text(), 'Ask to join')]/ancestor::button"))
                 )
+                button_text = join_button.text
+                print(f"🖱️ Found Join Button. Text: '{button_text}'")
                 join_button.click()
-                print("✅ Clicked Join Button")
+                print(f"✅ Clicked '{button_text}'")
             except Exception as e:
                 print(f"❌ Could not find/click Join button. You may need to click it manually. Error: {e}")
 
@@ -80,6 +86,7 @@ class GoogleMeetBot:
             time.sleep(5)
             self.is_connected = True
             print("✅ Bot successfully loaded Google Meet.")
+            pass
 
         except Exception as e:
             print(f"❌ Failed to join Google Meet: {e}")
@@ -126,7 +133,7 @@ class GoogleMeetBot:
             if chunk:
                 # Prepare the message payload
                 message = {
-                    "meeting_id": 1,
+                    "meeting_id": self.meeting_id,
                     "audio_data": base64.b64encode(chunk).decode('utf-8'),
                     "timestamp": time.time()
                 }

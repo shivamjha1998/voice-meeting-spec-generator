@@ -51,6 +51,24 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId }) => {
             .catch(err => console.error(err));
     };
 
+    const toggleMonitoring = () => {
+        if (status === "Connected") {
+            setStatus("Disconnected");
+        } else {
+            // Trigger Bot Join
+            fetch(`http://localhost:8000/meetings/${meetingId}/join`, { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    console.log("Bot trigger response:", data);
+                    setStatus("Connected");
+                })
+                .catch(err => {
+                    console.error("Failed to trigger bot:", err);
+                    alert("Failed to start bot. Is the backend running?");
+                });
+        }
+    };
+
     return (
         <div className="border p-4 rounded shadow bg-white h-full flex flex-col">
             <div className="flex justify-between items-center mb-4">
@@ -61,7 +79,7 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId }) => {
                     </span>
                     <button
                         className={`text-white px-3 py-1 rounded text-sm transition ${status === "Connected" ? "bg-red-500 hover:bg-red-600" : "bg-blue-600 hover:bg-blue-700"}`}
-                        onClick={() => setStatus(status === "Connected" ? "Disconnected" : "Connected")}
+                        onClick={toggleMonitoring}
                     >
                         {status === "Connected" ? "Stop Polling" : "Start Monitoring"}
                     </button>

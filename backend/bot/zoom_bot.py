@@ -12,12 +12,12 @@ from webdriver_manager.chrome import ChromeDriverManager
 from .recorder import AudioRecorder
 
 class ZoomBot:
-    def __init__(self):
+    def __init__(self, meeting_id=1):
         self.driver = None
         self.is_connected = False
         self.recorder = AudioRecorder(filename="zoom_meeting.wav")
         self.redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
-        self.meeting_id = 3
+        self.meeting_id = meeting_id
 
     def join_meeting(self, meeting_url: str):
         """
@@ -50,10 +50,12 @@ class ZoomBot:
         options = uc.ChromeOptions()
         options.add_argument("--use-fake-ui-for-media-stream")
         options.add_argument("--disable-notifications")
+        options.add_argument("--autoplay-policy=no-user-gesture-required")
+        options.add_argument(f"--user-data-dir={os.getcwd()}/chrome_profile")
 
         try:
             # Initialize Driver
-            self.driver = uc.Chrome(options=options)
+            self.driver = uc.Chrome(options=options, version_main=143)
             
             # 1. Go to URL (Now directly to Web Client)
             self.driver.get(meeting_url)
@@ -169,7 +171,7 @@ class ZoomBot:
             if chunk:
                 # Prepare the message payload
                 message = {
-                    "meeting_id": 1,
+                    "meeting_id": self.meeting_id,
                     "audio_data": base64.b64encode(chunk).decode('utf-8'),
                     "timestamp": time.time()
                 }

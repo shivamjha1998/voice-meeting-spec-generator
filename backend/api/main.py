@@ -173,6 +173,29 @@ def generate_specification(meeting_id: int, db: Session = Depends(database.get_d
 
     return {"status": "queued", "message": "Specification generation started"}
 
+@app.post("/meetings/{meeting_id}/join")
+def join_meeting(meeting_id: int, db: Session = Depends(database.get_db)):
+    """Triggers the Bot to join the meeting."""
+    # 1. Check if meeting exists
+    meeting = crud.get_meeting(db, meeting_id=meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    
+    # 2. Push job to Redis Queue for the Bot
+    try:
+        redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+        # Payload for the bot
+        job_data = {
+            "meeting_id": meeting.id,
+            "meeting_url": meeting.meeting_url,
+            "platform": "zoom" if "zoom.us" in meeting.meeting_url else "meet"
+        }
+        redis_client.rpush("bot_join_queue", json.dumps(job_data))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to queue bot join task: {str(e)}")
+
+    return {"status": "queued", "message": "Bot join request queued"}
+
 @app.get("/meetings/{meeting_id}/specification", response_model=schemas.Specification)
 def read_meeting_specification(meeting_id: int, db: Session = Depends(database.get_db)):
     spec = crud.get_meeting_specification(db, meeting_id=meeting_id)
