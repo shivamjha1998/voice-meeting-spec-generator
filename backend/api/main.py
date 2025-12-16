@@ -3,7 +3,7 @@ import httpx
 import json
 import redis
 import requests
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Body
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from typing import List
@@ -37,19 +37,14 @@ def read_root():
     return {"message": "Welcome to Voice Meeting Spec Generator API"}
 
 # --- Auth Routes ---
-
 @app.get("/auth/github/login")
 async def github_login():
-    """Redirects the user to GitHub to authorize the app."""
     return RedirectResponse(
         f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&scope=repo,user:email"
     )
 
 @app.get("/auth/github/callback")
 async def github_callback(code: str, db: Session = Depends(database.get_db)):
-    """Handles the callback from GitHub, swaps code for token, and creates user."""
-    
-    # 1. Exchange code for access token
     async with httpx.AsyncClient() as client:
         token_res = await client.post(
             "https://github.com/login/oauth/access_token",
@@ -68,7 +63,6 @@ async def github_callback(code: str, db: Session = Depends(database.get_db)):
     
     access_token = token_data["access_token"]
 
-    # 2. Fetch User Info using the token
     async with httpx.AsyncClient() as client:
         user_res = await client.get(
             "https://api.github.com/user",
@@ -83,7 +77,6 @@ async def github_callback(code: str, db: Session = Depends(database.get_db)):
         emails = email_res.json()
         primary_email = next((e["email"] for e in emails if e["primary"]), None)
 
-    # 3. Create or Update User in DB
     user_email = primary_email or user_data.get("email")
     if not user_email:
         raise HTTPException(status_code=400, detail="Could not retrieve email from GitHub")
@@ -101,7 +94,6 @@ async def github_callback(code: str, db: Session = Depends(database.get_db)):
         )
         db_user = crud.create_user(db, new_user)
 
-    # 4. Redirect to Frontend (Dashboard) with a session/cookie
     return RedirectResponse(f"http://localhost:5173?user_id={db_user.id}")
 
 @app.get("/health")
@@ -115,8 +107,7 @@ def create_project(project: schemas.ProjectCreate, db: Session = Depends(databas
 
 @app.get("/projects/", response_model=List[schemas.Project])
 def read_projects(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
-    projects = crud.get_projects(db, skip=skip, limit=limit)
-    return projects
+    return crud.get_projects(db, skip=skip, limit=limit)
 
 @app.get("/projects/{project_id}", response_model=schemas.Project)
 def read_project(project_id: int, db: Session = Depends(database.get_db)):
@@ -139,8 +130,7 @@ def create_meeting(meeting: schemas.MeetingCreate, db: Session = Depends(databas
 
 @app.get("/meetings/", response_model=List[schemas.Meeting])
 def read_meetings(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
-    meetings = crud.get_meetings(db, skip=skip, limit=limit)
-    return meetings
+    return crud.get_meetings(db, skip=skip, limit=limit)
 
 @app.get("/meetings/{meeting_id}", response_model=schemas.Meeting)
 def read_meeting(meeting_id: int, db: Session = Depends(database.get_db)):
@@ -151,19 +141,14 @@ def read_meeting(meeting_id: int, db: Session = Depends(database.get_db)):
 
 @app.get("/meetings/{meeting_id}/transcripts", response_model=List[schemas.Transcript])
 def read_meeting_transcripts(meeting_id: int, db: Session = Depends(database.get_db)):
-    transcripts = crud.get_meeting_transcripts(db, meeting_id=meeting_id)
-    return transcripts
+    return crud.get_meeting_transcripts(db, meeting_id=meeting_id)
 
-# Get Specification for a Meeting
 @app.post("/meetings/{meeting_id}/generate")
 def generate_specification(meeting_id: int, db: Session = Depends(database.get_db)):
-    """Triggers the AI Service to generate a spec for the given meeting."""
-    # 1. Check if meeting exists
     meeting = crud.get_meeting(db, meeting_id=meeting_id)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
     
-    # 2. Push job to Redis Queue
     try:
         redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
         job_data = {"meeting_id": meeting.id, "project_id": meeting.project_id}
@@ -175,16 +160,12 @@ def generate_specification(meeting_id: int, db: Session = Depends(database.get_d
 
 @app.post("/meetings/{meeting_id}/join")
 def join_meeting(meeting_id: int, db: Session = Depends(database.get_db)):
-    """Triggers the Bot to join the meeting."""
-    # 1. Check if meeting exists
     meeting = crud.get_meeting(db, meeting_id=meeting_id)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
     
-    # 2. Push job to Redis Queue for the Bot
     try:
         redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
-        # Payload for the bot
         job_data = {
             "meeting_id": meeting.id,
             "meeting_url": meeting.meeting_url,
@@ -200,71 +181,99 @@ def join_meeting(meeting_id: int, db: Session = Depends(database.get_db)):
 def read_meeting_specification(meeting_id: int, db: Session = Depends(database.get_db)):
     spec = crud.get_meeting_specification(db, meeting_id=meeting_id)
     if not spec:
-        raise HTTPException(status_code=404, detail="Specification not found (or still generating)")
+        raise HTTPException(status_code=404, detail="Specification not found")
     return spec
 
-@app.post("/meetings/{meeting_id}/create-issues")
-def create_github_issues(meeting_id: int, db: Session = Depends(database.get_db), user_id: int = 1):
-    """Extracts tasks from spec and creates GitHub Issues."""
-    # 1. Get the Spec
+@app.get("/meetings/{meeting_id}/tasks/preview")
+def preview_tasks(meeting_id: int, db: Session = Depends(database.get_db)):
+    """Extracts tasks using AI but does not save them. Returns a list for review."""
     spec = crud.get_meeting_specification(db, meeting_id)
     if not spec:
         raise HTTPException(status_code=404, detail="Specification not found")
 
-    # 2. Get User for GitHub Token
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=400, detail="User not found")
-        
-    if not user.github_token:
-        raise HTTPException(status_code=400, detail="User not authenticated with GitHub")
-
-    # 3. Extract Tasks using AI
     try:
         llm = LLMClient()
         tasks_json = llm.extract_tasks(spec.content)
         tasks_data = json.loads(tasks_json).get("tasks", [])
+        return tasks_data
     except Exception as e:
          raise HTTPException(status_code=500, detail=f"AI Task Extraction failed: {str(e)}")
 
-    # 4. Create Issues on GitHub
-    created_issues = []
+@app.post("/meetings/{meeting_id}/tasks/sync")
+def sync_tasks_to_github(
+    meeting_id: int, 
+    tasks: List[schemas.TaskBase], 
+    db: Session = Depends(database.get_db), 
+    user_id: int = 1
+):
+    """Takes a reviewed list of tasks, creates GitHub issues, and saves to DB."""
     
-    # Retrieve Project to get Repo URL
+    # 1. Validation
+    spec = crud.get_meeting_specification(db, meeting_id)
+    if not spec:
+        raise HTTPException(status_code=404, detail="Specification not found")
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user or not user.github_token:
+        raise HTTPException(status_code=400, detail="User not authenticated with GitHub")
+
     project = crud.get_project(db, spec.project_id)
     if not project or not project.github_repo_url:
-        raise HTTPException(status_code=400, detail="Project does not have a GitHub Repo URL")
+        raise HTTPException(status_code=400, detail="Project missing GitHub Repo URL")
 
-    # Extract owner/repo from URL (Simplistic parsing)
-    # URL format: https://github.com/owner/repo
     try:
         parts = project.github_repo_url.strip("/").split("/")
         owner, repo = parts[-2], parts[-1]
     except:
-        raise HTTPException(status_code=400, detail="Invalid GitHub Repo URL format")
+        raise HTTPException(status_code=400, detail="Invalid GitHub Repo URL")
 
     headers = {
         "Authorization": f"token {user.github_token}",
         "Accept": "application/vnd.github.v3+json"
     }
 
-    errors = []
-    for task in tasks_data:
+    results = []
+    
+    # 2. Loop through reviewed tasks
+    for task_data in tasks:
+        # Create on GitHub
         issue_body = {
-            "title": task["title"],
-            "body": f"{task['description']}\n\n*Generated by Voice Meeting Spec Generator*"
+            "title": task_data.title,
+            "body": f"{task_data.description}\n\n*Generated by Voice Meeting Spec Generator*"
         }
         res = requests.post(f"https://api.github.com/repos/{owner}/{repo}/issues", json=issue_body, headers=headers)
+        
+        issue_num = None
+        status = "failed"
+        html_url = ""
+        
         if res.status_code == 201:
-            created_issues.append(res.json().get("html_url"))
-        else:
-            errors.append(f"Failed to create '{task['title']}': {res.text}")
+            gh_data = res.json()
+            issue_num = gh_data.get("number")
+            html_url = gh_data.get("html_url")
+            status = "created"
+        
+        # Save to DB (even if GitHub failed, we might want to keep the local record, 
+        # but here we only save if GitHub succeeded or partially succeeded)
+        if issue_num:
+            db_task = schemas.TaskCreate(
+                specification_id=spec.id,
+                title=task_data.title,
+                description=task_data.description,
+                github_issue_number=issue_num
+            )
+            crud.create_task(db, db_task)
 
-    return {"status": "success", "created_issues": created_issues, "errors": errors}
+        results.append({
+            "title": task_data.title, 
+            "status": status, 
+            "issue_url": html_url
+        })
+
+    return {"results": results}
 
 @app.get("/user/repos")
 def read_user_repos(user_id: int, db: Session = Depends(database.get_db)):
-    """Fetch the list of repositories for the given user"""
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user or not user.github_token:
         raise HTTPException(status_code=401, detail="User not authorised with GitHub")
@@ -277,10 +286,9 @@ def read_user_repos(user_id: int, db: Session = Depends(database.get_db)):
     response = requests.get("https://api.github.com/user/repos?sort=updated&per_page=100", headers=headers)
 
     if response.status_code != 200:
-        raise HTTPException(status_code=response.status_code, detail="Failed to fetch repositories from GitHub")
+        raise HTTPException(status_code=response.status_code, detail="Failed to fetch repositories")
 
     repos = response.json()
-
     return [
         {"id": r["id"], "name": r["name"], "full_name": r["full_name"], "html_url": r["html_url"]} 
         for r in repos

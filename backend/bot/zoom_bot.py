@@ -51,7 +51,6 @@ class ZoomBot:
         options.add_argument("--use-fake-ui-for-media-stream")
         options.add_argument("--disable-notifications")
         options.add_argument("--autoplay-policy=no-user-gesture-required")
-        options.add_argument(f"--user-data-dir={os.getcwd()}/chrome_profile")
 
         try:
             # Initialize Driver

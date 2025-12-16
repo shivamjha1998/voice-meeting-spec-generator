@@ -2,6 +2,7 @@ import time
 import json
 import os
 import redis
+import threading
 from sqlalchemy.orm import Session
 from backend.common import database, models
 from backend.ai.llm_client import LLMClient
@@ -19,11 +20,23 @@ def main():
         print(f"❌ Initialization Failed: {e}")
         return
 
+    # --- Start Real-time Analyst in a separate thread ---
+    print("🚀 Launching Real-time Analyst Thread...")
+    analysis_thread = threading.Thread(
+        target=run_realtime_analysis, 
+        args=(redis_client, llm_client),
+        daemon=True
+    )
+    analysis_thread.start()
+
     print("waiting Waiting for jobs on 'spec_generation_queue'...")
 
+    # Main thread handles Specification Generation (heavy task)
     while True:
         try:
             # Blocking pop: waits for a job
+            # The Redis client connection pool handles thread safety, so this blpop
+            # won't block the blpop in the other thread.
             item = redis_client.blpop("spec_generation_queue", timeout=5)
             
             if item:
@@ -81,23 +94,33 @@ def process_meeting(meeting_id: int, project_id: int, llm_client: LLMClient):
 def run_realtime_analysis(redis_client, llm_client):
     """
     Listens for live transcript segments and generates questions.
+    Uses the passed redis_client instance.
     """
     print("🧠 AI Analyst listening on 'conversation_analysis_queue'...")
+    
     while True:
         try:
-            item = redis_client.blpop("conversation_analysis_queue", timeout=1)
+            # Reusing the shared redis_client. 
+            # Since blpop is a blocking call, the connection pool will assign 
+            # a dedicated connection to this thread while it waits.
+            item = redis_client.blpop("conversation_analysis_queue", timeout=5)
+            
             if item:
                 _, data_str = item
                 data = json.loads(data_str)
                 meeting_id = data.get("meeting_id")
                 text = data.get("text")
+                speaker = data.get("speaker")
+                
+                print(f"   🔍 Analyzing segment from {speaker}...")
                 
                 # Ask LLM if we should intervene
                 question = llm_client.generate_clarifying_question(text)
                 
-                if question:
+                if question and question != "NO_QUESTION":
                     print(f"💡 Generated Question: {question}")
-                    # Send to TTS Queue
+                    
+                    # Send to TTS Queue using the same client
                     redis_client.rpush("speak_request_queue", json.dumps({
                         "meeting_id": meeting_id,
                         "text": question

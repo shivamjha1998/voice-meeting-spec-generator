@@ -84,3 +84,19 @@ class Specification(SpecificationBase):
 
     class Config:
         from_attributes = True
+
+class TaskBase(BaseModel):
+    title: str
+    description: Optional[str] = None
+
+class TaskCreate(TaskBase):
+    specification_id: int
+    github_issue_number: Optional[int] = None
+
+class Task(TaskBase):
+    id: int
+    specification_id: int
+    github_issue_number: Optional[int] = None
+
+    class Config:
+        from_attributes = True

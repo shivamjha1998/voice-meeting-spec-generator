@@ -64,3 +64,9 @@ def get_meeting_transcripts(db: Session, meeting_id: int):
 def get_meeting_specification(db: Session, meeting_id: int):
     return db.query(models.Specification).filter(models.Specification.meeting_id == meeting_id).order_by(models.Specification.created_at.desc()).first()
 
+def create_task(db: Session, task: schemas.TaskCreate):
+    db_task = models.Task(**task.dict())
+    db.add(db_task)
+    db.commit()
+    db.refresh(db_task)
+    return db_task
