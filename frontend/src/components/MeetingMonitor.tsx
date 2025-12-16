@@ -9,9 +9,10 @@ interface Transcript {
 
 interface Props {
     meetingId: number;
+    onMeetingEnd?: () => void;
 }
 
-const MeetingMonitor: React.FC<Props> = ({ meetingId }) => {
+const MeetingMonitor: React.FC<Props> = ({ meetingId, onMeetingEnd }) => {
     const [transcripts, setTranscripts] = useState<Transcript[]>([]);
     const [status, setStatus] = useState<string>("Disconnected");
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -83,6 +84,27 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId }) => {
             .catch(err => alert(`Failed to start bot: ${err}`));
     };
 
+    const handleEndMeeting = async () => {
+        if (!confirm("Are you sure you want to end the meeting? This will stop the bot and generate the spec.")) return;
+
+        try {
+            const res = await fetch(`http://localhost:8000/meetings/${meetingId}/end`, {
+                method: 'POST'
+            });
+
+            if (res.ok) {
+                setStatus("Ended");
+                alert("Meeting Ended. Specification generation has started.");
+                if (onMeetingEnd) onMeetingEnd();
+            } else {
+                alert("Failed to end meeting");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Network error ending meeting");
+        }
+    };
+
     return (
         <div className="border p-4 rounded shadow bg-white h-full flex flex-col">
             <div className="flex justify-between items-center mb-4">
@@ -91,12 +113,20 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId }) => {
                     <span className={`px-2 py-1 rounded text-white text-sm mr-2 ${status === "Connected" ? "bg-green-500" : "bg-gray-500"}`}>
                         {status}
                     </span>
-                    <button
-                        className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-                        onClick={toggleMonitoring}
-                    >
-                        Summon Bot
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                            onClick={toggleMonitoring}
+                        >
+                            Summon Bot
+                        </button>
+                        <button
+                            className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
+                            onClick={handleEndMeeting}
+                        >
+                            End Meeting
+                        </button>
+                    </div>
                 </div>
             </div>
 

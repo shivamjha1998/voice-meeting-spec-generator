@@ -1,4 +1,5 @@
 import redis.asyncio as redis_async
+import asyncio
 import os
 import httpx
 import json
@@ -11,6 +12,7 @@ from typing import List
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import WebSocket, WebSocketDisconnect
+from datetime import datetime
 
 from backend.common import models, database
 from backend.api import schemas, crud
@@ -331,3 +333,30 @@ async def websocket_endpoint(websocket: WebSocket, meeting_id: int):
     finally:
         await pubsub.unsubscribe(channel_name)
         await r.close()
+
+@app.post("/meetings/{meeting_id}/end")
+def end_meeting(meeting_id: int, db: Session = Depends(database.get_db)):
+    """Ends the meeting, stops the bot, and triggers spec generation."""
+    
+    # 1. Update DB
+    meeting = crud.get_meeting(db, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    
+    meeting.ended_at = datetime.utcnow()
+    db.commit()
+    
+    redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+
+    # 2. Send STOP signal to Bot
+    # We'll use a specific key pattern that the bot checks
+    redis_client.set(f"stop_meeting_{meeting_id}", "true")
+    
+    # 3. Trigger Spec Generation (Auto-generate)
+    try:
+        job_data = {"meeting_id": meeting.id, "project_id": meeting.project_id}
+        redis_client.rpush("spec_generation_queue", json.dumps(job_data))
+    except Exception as e:
+        print(f"Failed to queue spec generation: {e}")
+
+    return {"status": "success", "message": "Meeting ended, bot stopped, spec generation started."}

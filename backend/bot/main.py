@@ -15,9 +15,8 @@ def main():
     
     while True:
         try:
-            # Blocking pop with timeout (to allow checking for signals)
-            # blpop returns tuple (queue_name, data) or None
-            item = redis_client.blpop("bot_join_queue", timeout=5)
+            # check for join requests
+            item = redis_client.blpop("bot_join_queue", timeout=1)
             
             if item:
                 _, data_str = item
@@ -44,30 +43,35 @@ def main():
                     continue
 
                 try:
-                    # 1. Join
+                    # 1. Join & start audio
                     bot.join_meeting(meeting_url)
-                    
-                    # 2. Start audio
                     bot.start_audio_stream()
+
+                    # Clear any previous stop signal
+                    stop_key = f"stop_meeting_{meeting_id}"
+                    redis_client.delete(stop_key)
                     
                     print(f"\n✅ Bot joined Meeting {meeting_id}. Monitoring audio...")
                     
-                    # Loop to keep bot alive for THIS meeting until told to stop (or just run indefinitely for now)
-                    # For a real multi-tenant bot, we'd spawn a process. For now, we block this thread for one meeting.
-                    # We check a 'stop_meeting_{id}' key or just run until manual stop?
-                    # Let's run until Exception or playback queue logic.
-                    
                     while bot.is_connected:
+                        # 1. Check for Manual Stop Signal
+                        if redis_client.exists(stop_key):
+                            print(f"🛑 Received STOP signal for meeting {meeting_id}")
+                            break
+                        
+                        # 2. Check for Audio Playback (TTS)
                         try:
-                            # Check for audio playback requests (existing logic)
+                            # Use lpop (non-blocking) so we don't freeze the loop
                             item = redis_client.lpop("audio_playback_queue")
                             if item:
                                 playback_data = json.loads(item)
-                                file_path = playback_data.get("file_path")
-                                if file_path and hasattr(bot, 'recorder'):
-                                    bot.recorder.play_audio(file_path)
-                        except Exception:
-                            pass
+                                # Only play if it matches current meeting (simple check)
+                                if playback_data.get("meeting_id") == meeting_id:
+                                    file_path = playback_data.get("file_path")
+                                    if file_path:
+                                        bot.recorder.play_audio(file_path)
+                        except Exception as e:
+                            print(f"Playback Error: {e}")
                         
                         time.sleep(0.5)
                         
@@ -76,18 +80,16 @@ def main():
                 finally:
                     if bot:
                         bot.leave_meeting()
-                    print("🔄 Bot finished/left meeting. Waiting for next request...")
-
-            else:
-                # No job, just loop back
-                pass
+                    # Clean up stop key
+                    redis_client.delete(f"stop_meeting_{meeting_id}")
+                    print("🔄 Bot finished. Waiting for next request...")
 
         except KeyboardInterrupt:
             print("\n🛑 Stopping Bot Service...")
             sys.exit(0)
         except Exception as e:
             print(f"⚠️ Error in main loop: {e}")
-            time.sleep(5)
+            time.sleep(1)
 
 if __name__ == "__main__":
     main()

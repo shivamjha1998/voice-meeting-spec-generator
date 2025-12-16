@@ -40,7 +40,7 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
                 setSpec(null);
             }
         } catch (err) {
-            console.error(err);
+            // Ignore 404s during polling
         }
         return false;
     };

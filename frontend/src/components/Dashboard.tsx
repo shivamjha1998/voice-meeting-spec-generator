@@ -100,7 +100,16 @@ const Dashboard: React.FC<Props> = ({ userId, onSelectMeeting }) => {
             });
             if (res.ok) {
                 const meeting = await res.json();
-                onSelectMeeting(meeting.id); // Go to meeting view immediately
+
+                // Auto-join Bot
+                try {
+                    await fetch(`http://localhost:8000/meetings/${meeting.id}/join`, { method: 'POST' });
+                    alert("Meeting created! Bot has been summoned to join.");
+                } catch (e) {
+                    console.error("Failed to auto-join bot:", e);
+                }
+
+                onSelectMeeting(meeting.id);
             }
         } catch (err) {
             console.error(err);
