@@ -188,6 +188,20 @@ def read_meeting_specification(meeting_id: int, db: Session = Depends(database.g
         raise HTTPException(status_code=404, detail="Specification not found")
     return spec
 
+@app.put("/meetings/{meeting_id}/specification", response_model=schemas.Specification)
+def update_meeting_specification(
+    meeting_id: int, 
+    spec_update: schemas.SpecificationUpdate, 
+    db: Session = Depends(database.get_db)
+):
+    # Check if exists first
+    existing_spec = crud.get_meeting_specification(db, meeting_id)
+    if not existing_spec:
+        raise HTTPException(status_code=404, detail="Specification not found")
+        
+    updated_spec = crud.update_specification(db, meeting_id, spec_update.content)
+    return updated_spec
+
 @app.get("/meetings/{meeting_id}/tasks/preview")
 def preview_tasks(meeting_id: int, db: Session = Depends(database.get_db)):
     """Extracts tasks using AI but does not save them. Returns a list for review."""

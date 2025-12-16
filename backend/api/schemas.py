@@ -76,6 +76,9 @@ class SpecificationCreate(SpecificationBase):
     project_id: int
     meeting_id: int
 
+class SpecificationUpdate(BaseModel):
+    content: str
+
 class Specification(SpecificationBase):
     id: int
     project_id: int

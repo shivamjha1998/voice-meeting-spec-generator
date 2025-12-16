@@ -21,13 +21,18 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Edit Mode State
+    const [isEditing, setIsEditing] = useState(false);
+    const [editContent, setEditContent] = useState("");
+    const [isSaving, setIsSaving] = useState(false);
+
     // Task Management State
     const [tasks, setTasks] = useState<Task[]>([]);
     const [isPreviewingTasks, setIsPreviewingTasks] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncResult, setSyncResult] = useState<any[] | null>(null);
 
-    // Check if spec exists
+    // Fetch Spec
     const fetchSpec = async () => {
         try {
             const res = await fetch(`http://localhost:8000/meetings/${meetingId}/specification`);
@@ -40,7 +45,7 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
                 setSpec(null);
             }
         } catch (err) {
-            // Ignore 404s during polling
+            console.error(err);
         }
         return false;
     };
@@ -51,18 +56,19 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
         setTasks([]);
         setSyncResult(null);
         setIsPreviewingTasks(false);
+        setIsEditing(false);
         fetchSpec();
     }, [meetingId]);
 
-    // Polling effect
+    // Polling effect (only if not editing, to avoid overwriting user work)
     useEffect(() => {
-        if (!isLoading) return;
+        if (!isLoading || isEditing) return; // Don't poll while editing
         const interval = setInterval(async () => {
             const found = await fetchSpec();
             if (found) clearInterval(interval);
         }, 3000);
         return () => clearInterval(interval);
-    }, [isLoading]);
+    }, [isLoading, isEditing]);
 
     const handleGenerate = async () => {
         setIsLoading(true);
@@ -76,6 +82,44 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
         }
     };
 
+    // --- NEW: Edit Logic ---
+    const handleEditToggle = () => {
+        if (spec) {
+            setEditContent(spec.content);
+            setIsEditing(true);
+        }
+    };
+
+    const handleCancelEdit = () => {
+        setIsEditing(false);
+        setEditContent("");
+    };
+
+    const handleSaveSpec = async () => {
+        if (!spec) return;
+        setIsSaving(true);
+        try {
+            const res = await fetch(`http://localhost:8000/meetings/${meetingId}/specification`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: editContent })
+            });
+
+            if (res.ok) {
+                const updatedSpec = await res.json();
+                setSpec(updatedSpec);
+                setIsEditing(false);
+            } else {
+                alert("Failed to save changes.");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error saving specification.");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     const handleExport = () => {
         if (!spec) return;
         const blob = new Blob([spec.content], { type: 'text/markdown' });
@@ -86,10 +130,12 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
         a.click();
     };
 
-    // --- NEW: Task Logic ---
+    // --- Task Logic (Existing) ---
     const handlePreviewTasks = async () => {
         setIsPreviewingTasks(true);
         try {
+            // Note: If user edited spec, backend fetches from DB, so our Save logic ensures
+            // tasks are extracted from the LATEST version.
             const res = await fetch(`http://localhost:8000/meetings/${meetingId}/tasks/preview`);
             if (res.ok) {
                 const data = await res.json();
@@ -104,6 +150,8 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
         }
     };
 
+    // ... (handleDeleteTask, handleTaskChange, handleSyncToGitHub remain the same) ...
+    // Re-implementing them briefly for completeness of this file block
     const handleDeleteTask = (index: number) => {
         const newTasks = [...tasks];
         newTasks.splice(index, 1);
@@ -118,7 +166,6 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
 
     const handleSyncToGitHub = async () => {
         if (!confirm(`Are you sure you want to create ${tasks.length} issues on GitHub?`)) return;
-
         setIsSyncing(true);
         try {
             const res = await fetch(`http://localhost:8000/meetings/${meetingId}/tasks/sync`, {
@@ -128,7 +175,7 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
             });
             const data = await res.json();
             setSyncResult(data.results);
-            setTasks([]); // Clear review list on success
+            setTasks([]);
         } catch (e) {
             alert("Sync failed");
         } finally {
@@ -138,18 +185,34 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
 
     return (
         <div className="flex flex-col gap-6">
-            {/* Spec Viewer Card */}
+            {/* Spec Viewer/Editor Card */}
             <div className="border p-4 rounded shadow bg-white h-96 flex flex-col">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold">Specification Viewer</h2>
-                    {spec && <span className="text-sm text-gray-500">v{spec.version}</span>}
+                    <div className="flex items-center gap-2">
+                        {spec && !isEditing && (
+                            <button
+                                onClick={handleEditToggle}
+                                className="text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 px-3 py-1 rounded"
+                            >
+                                ✏️ Edit
+                            </button>
+                        )}
+                        {spec && <span className="text-sm text-gray-500">v{spec.version}</span>}
+                    </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto bg-gray-50 p-4 rounded border font-mono whitespace-pre-wrap text-sm">
+                <div className="flex-1 overflow-y-auto bg-gray-50 p-4 rounded border font-mono whitespace-pre-wrap text-sm relative">
                     {isLoading ? (
                         <div className="text-blue-600 animate-pulse text-center mt-10">Generating Specification...</div>
                     ) : error ? (
                         <div className="text-red-500 text-center">{error}</div>
+                    ) : isEditing ? (
+                        <textarea
+                            className="w-full h-full bg-white p-2 border focus:outline-blue-500 resize-none"
+                            value={editContent}
+                            onChange={(e) => setEditContent(e.target.value)}
+                        />
                     ) : spec ? (
                         spec.content
                     ) : (
@@ -158,25 +221,45 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
                 </div>
 
                 <div className="mt-4 flex gap-2">
-                    <button onClick={handleGenerate} disabled={isLoading} className={`px-4 py-2 rounded text-white transition ${isLoading ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"}`}>
-                        {spec ? "Regenerate Spec" : "Generate Spec"}
-                    </button>
-                    {spec && (
+                    {isEditing ? (
                         <>
-                            <button onClick={handleExport} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">
-                                Export MD
+                            <button
+                                onClick={handleSaveSpec}
+                                disabled={isSaving}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold"
+                            >
+                                {isSaving ? "Saving..." : "Save Changes"}
                             </button>
-                            {tasks.length === 0 && !syncResult && (
-                                <button onClick={handlePreviewTasks} disabled={isPreviewingTasks} className="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded">
-                                    {isPreviewingTasks ? "Extracting..." : "Review Tasks"}
-                                </button>
+                            <button
+                                onClick={handleCancelEdit}
+                                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded"
+                            >
+                                Cancel
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <button onClick={handleGenerate} disabled={isLoading} className={`px-4 py-2 rounded text-white transition ${isLoading ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"}`}>
+                                {spec ? "Regenerate Spec" : "Generate Spec"}
+                            </button>
+                            {spec && (
+                                <>
+                                    <button onClick={handleExport} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">
+                                        Export MD
+                                    </button>
+                                    {tasks.length === 0 && !syncResult && (
+                                        <button onClick={handlePreviewTasks} disabled={isPreviewingTasks} className="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded">
+                                            {isPreviewingTasks ? "Extracting..." : "Review Tasks"}
+                                        </button>
+                                    )}
+                                </>
                             )}
                         </>
                     )}
                 </div>
             </div>
 
-            {/* Task Review Card */}
+            {/* Task Review Card (Same as before) */}
             {(tasks.length > 0 || syncResult) && (
                 <div className="border p-4 rounded shadow bg-white">
                     <h2 className="text-xl font-bold mb-4">Task Review & Sync</h2>

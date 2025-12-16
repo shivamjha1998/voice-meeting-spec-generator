@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from datetime import datetime
 from backend.common import models
 from . import schemas
 
@@ -63,6 +64,15 @@ def get_meeting_transcripts(db: Session, meeting_id: int):
 
 def get_meeting_specification(db: Session, meeting_id: int):
     return db.query(models.Specification).filter(models.Specification.meeting_id == meeting_id).order_by(models.Specification.created_at.desc()).first()
+
+def update_specification(db: Session, meeting_id: int, content: str):
+    spec = get_meeting_specification(db, meeting_id)
+    if spec:
+        spec.content = content
+        spec.created_at = datetime.utcnow()
+        db.commit()
+        db.refresh(spec)
+    return spec
 
 def create_task(db: Session, task: schemas.TaskCreate):
     db_task = models.Task(**task.dict())
