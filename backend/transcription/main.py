@@ -97,7 +97,7 @@ def process_and_save_diarized(db: Session, redis_client: redis.Redis, meeting_id
             save_and_publish(db, redis_client, meeting_id, current_speaker, full_sentence)
 
 def save_and_publish(db: Session, redis_client: redis.Redis, meeting_id: int, speaker: str, text: str):
-    """Saves to DB and publishes to Redis for AI analysis"""
+    """Saves to DB, queues for AI analysis, and publishes for Real-time UI"""
     try:
         # 1. Save to DB
         formatted_speaker = speaker.replace("_", " ").title()
@@ -108,15 +108,27 @@ def save_and_publish(db: Session, redis_client: redis.Redis, meeting_id: int, sp
         )
         db.add(transcript)
         db.commit()
+        db.refresh(transcript)
 
-        # 2. Publish to AI Analysis Queue
-        analysis_payload = {
+        # Payload for both AI and UI
+        payload = {
+            "id": transcript.id,
             "meeting_id": meeting_id,
             "speaker": formatted_speaker,
-            "text": text
+            "text": text,
+            "timestamp": transcript.timestamp.isoformat() if transcript.timestamp else str(time.time()) 
         }
-        redis_client.rpush("conversation_analysis_queue", json.dumps(analysis_payload))
+        json_payload = json.dumps(payload)
+
+        # 2. Publish to AI Analysis Queue (List) - Existing
+        redis_client.rpush("conversation_analysis_queue", json_payload)
+
+        # 3. Publish to Real-time UI (Pub/Sub) - NEW
+        # Channel name: meeting_{id}_updates
+        redis_client.publish(f"meeting_{meeting_id}_updates", json_payload)
         
+        print(f"   Pb Published update for meeting {meeting_id}")
+
     except Exception as e:
         print(f"❌ DB/Redis Error: {e}")
         db.rollback()

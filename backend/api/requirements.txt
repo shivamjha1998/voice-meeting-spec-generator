@@ -2,11 +2,10 @@ fastapi
 uvicorn
 sqlalchemy
 psycopg2-binary
-redis
 python-multipart
 pydantic-settings
 httpx
 python-dotenv
-redis
+redis>=4.2.0
 huggingface_hub
 requests

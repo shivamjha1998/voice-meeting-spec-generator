@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 interface Transcript {
-    id: number;
-    meeting_id: number;
+    id?: number; // Optional now as live updates might not have ID immediately if we don't return it from publish
     speaker: string;
     text: string;
-    timestamp: string;
+    timestamp: string | number;
 }
 
 interface Props {
@@ -16,57 +15,72 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId }) => {
     const [transcripts, setTranscripts] = useState<Transcript[]>([]);
     const [status, setStatus] = useState<string>("Disconnected");
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const wsRef = useRef<WebSocket | null>(null);
 
-    // Auto-scroll to bottom when new transcripts arrive
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
-
+    // Auto-scroll
     useEffect(() => {
-        scrollToBottom();
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [transcripts]);
 
+    // Initial Fetch (History) + WebSocket Setup
     useEffect(() => {
-        // Reset transcripts when switching meetings
-        setTranscripts([]);
-        setStatus("Disconnected");
-    }, [meetingId]);
-
-    useEffect(() => {
-        let interval: ReturnType<typeof setInterval> | undefined;
-        if (status === "Connected") {
-            fetchTranscripts();
-            interval = setInterval(fetchTranscripts, 2000);
-        }
-        return () => { if (interval) clearInterval(interval); };
-    }, [status, meetingId]);
-
-    const fetchTranscripts = () => {
+        // 1. Fetch History first
         fetch(`http://localhost:8000/meetings/${meetingId}/transcripts`)
-            .then(res => {
-                if (!res.ok) throw new Error("Failed to fetch");
-                return res.json();
-            })
+            .then(res => res.json())
             .then(data => setTranscripts(data))
             .catch(err => console.error(err));
-    };
+
+        // 2. Setup WebSocket
+        const wsUrl = `ws://localhost:8000/ws/meetings/${meetingId}`;
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+            console.log("WS Connected");
+            setStatus("Connected");
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                // The payload matches the python dict: { speaker, text, timestamp, ... }
+                const newTranscript: Transcript = {
+                    speaker: data.speaker,
+                    text: data.text,
+                    timestamp: data.timestamp
+                };
+
+                setTranscripts(prev => [...prev, newTranscript]);
+            } catch (e) {
+                console.error("WS Parse Error", e);
+            }
+        };
+
+        ws.onclose = () => {
+            console.log("WS Disconnected");
+            if (status === "Connected") setStatus("Disconnected");
+        };
+
+        ws.onerror = (err) => {
+            console.error("WS Error", err);
+            setStatus("Error");
+        };
+
+        return () => {
+            ws.close();
+        };
+    }, [meetingId]);
 
     const toggleMonitoring = () => {
-        if (status === "Connected") {
-            setStatus("Disconnected");
-        } else {
-            // Trigger Bot Join
-            fetch(`http://localhost:8000/meetings/${meetingId}/join`, { method: 'POST' })
-                .then(res => res.json())
-                .then(data => {
-                    console.log("Bot trigger response:", data);
-                    setStatus("Connected");
-                })
-                .catch(err => {
-                    console.error("Failed to trigger bot:", err);
-                    alert("Failed to start bot. Is the backend running?");
-                });
-        }
+        // This button now mostly just triggers the BOT join, 
+        // since monitoring is automatic via WS.
+        fetch(`http://localhost:8000/meetings/${meetingId}/join`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                console.log("Bot trigger response:", data);
+                alert("Bot requested to join!");
+            })
+            .catch(err => alert(`Failed to start bot: ${err}`));
     };
 
     return (
@@ -78,10 +92,10 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId }) => {
                         {status}
                     </span>
                     <button
-                        className={`text-white px-3 py-1 rounded text-sm transition ${status === "Connected" ? "bg-red-500 hover:bg-red-600" : "bg-blue-600 hover:bg-blue-700"}`}
+                        className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
                         onClick={toggleMonitoring}
                     >
-                        {status === "Connected" ? "Stop Polling" : "Start Monitoring"}
+                        Summon Bot
                     </button>
                 </div>
             </div>
@@ -89,11 +103,11 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId }) => {
             <div className="flex-1 h-96 overflow-y-auto border p-4 bg-gray-50 rounded">
                 {transcripts.length === 0 ? (
                     <p className="text-gray-400 text-center mt-10">
-                        {status === "Connected" ? "Waiting for speech..." : "Connect to see transcripts."}
+                        Waiting for speech...
                     </p>
                 ) : (
-                    transcripts.map((t) => (
-                        <div key={t.id} className="mb-4">
+                    transcripts.map((t, idx) => (
+                        <div key={t.id || idx} className="mb-4">
                             <div className="text-xs text-gray-500 mb-1">
                                 {new Date(t.timestamp).toLocaleTimeString()} - <span className="font-bold text-blue-600">{t.speaker}</span>
                             </div>

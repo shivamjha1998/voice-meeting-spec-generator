@@ -1,3 +1,4 @@
+import redis.asyncio as redis_async
 import os
 import httpx
 import json
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import WebSocket, WebSocketDisconnect
 
 from backend.common import models, database
 from backend.api import schemas, crud
@@ -293,3 +295,39 @@ def read_user_repos(user_id: int, db: Session = Depends(database.get_db)):
         {"id": r["id"], "name": r["name"], "full_name": r["full_name"], "html_url": r["html_url"]} 
         for r in repos
     ]
+
+@app.websocket("/ws/meetings/{meeting_id}")
+async def websocket_endpoint(websocket: WebSocket, meeting_id: int):
+    await websocket.accept()
+    
+    # Create a dedicated async Redis connection for this websocket
+    r = redis_async.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+    pubsub = r.pubsub()
+    
+    channel_name = f"meeting_{meeting_id}_updates"
+    await pubsub.subscribe(channel_name)
+    
+    print(f"🟢 WS Connected: {channel_name}")
+
+    try:
+        while True:
+            # Wait for message from Redis
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            
+            if message:
+                # message['data'] is bytes, decode to string
+                data = message['data'].decode('utf-8')
+                # Send to Frontend
+                await websocket.send_text(data)
+            
+            # Keep connection alive / yield control
+            # (In a real app, you might want a heartbeart or rely on ping/pong)
+            await asyncio.sleep(0.01)
+            
+    except WebSocketDisconnect:
+        print(f"mb WS Disconnected: {channel_name}")
+    except Exception as e:
+        print(f"❌ WS Error: {e}")
+    finally:
+        await pubsub.unsubscribe(channel_name)
+        await r.close()
