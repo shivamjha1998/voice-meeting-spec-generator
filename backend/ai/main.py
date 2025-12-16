@@ -35,8 +35,6 @@ def main():
     while True:
         try:
             # Blocking pop: waits for a job
-            # The Redis client connection pool handles thread safety, so this blpop
-            # won't block the blpop in the other thread.
             item = redis_client.blpop("spec_generation_queue", timeout=5)
             
             if item:
@@ -67,14 +65,18 @@ def process_meeting(meeting_id: int, project_id: int, llm_client: LLMClient):
         # Combine into one text block
         full_text = "\n".join([f"{t.speaker}: {t.text}" for t in transcripts])
         
-        # 2. Generate Summary & Spec (Chain of Thought)
+        # 2. Fetch Custom Spec Prompt from Settings
+        spec_setting = db.query(models.Setting).filter(models.Setting.key == "spec_prompt").first()
+        custom_prompt = spec_setting.value if spec_setting else None
+
+        # 3. Generate Summary & Spec (Chain of Thought)
         print("   ... Summarizing ...")
         summary = llm_client.summarize_meeting(full_text)
         
-        print("   ... Generating Spec ...")
-        spec_content = llm_client.generate_specification(summary)
+        print(f"   ... Generating Spec {'(Custom Prompt)' if custom_prompt else ''} ...")
+        spec_content = llm_client.generate_specification(summary, custom_prompt=custom_prompt)
         
-        # 3. Save to DB
+        # 4. Save to DB
         spec = models.Specification(
             project_id=project_id,
             meeting_id=meeting_id,
@@ -100,9 +102,6 @@ def run_realtime_analysis(redis_client, llm_client):
     
     while True:
         try:
-            # Reusing the shared redis_client. 
-            # Since blpop is a blocking call, the connection pool will assign 
-            # a dedicated connection to this thread while it waits.
             item = redis_client.blpop("conversation_analysis_queue", timeout=5)
             
             if item:
@@ -114,8 +113,15 @@ def run_realtime_analysis(redis_client, llm_client):
                 
                 print(f"   🔍 Analyzing segment from {speaker}...")
                 
+                # Fetch Question Prompt from Settings
+                # (We open a short-lived session here to get dynamic updates)
+                db = database.SessionLocal()
+                q_setting = db.query(models.Setting).filter(models.Setting.key == "question_prompt").first()
+                custom_q_prompt = q_setting.value if q_setting else None
+                db.close()
+
                 # Ask LLM if we should intervene
-                question = llm_client.generate_clarifying_question(text)
+                question = llm_client.generate_clarifying_question(text, custom_prompt=custom_q_prompt)
                 
                 if question and question != "NO_QUESTION":
                     print(f"💡 Generated Question: {question}")

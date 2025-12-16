@@ -374,3 +374,25 @@ def end_meeting(meeting_id: int, db: Session = Depends(database.get_db)):
         print(f"Failed to queue spec generation: {e}")
 
     return {"status": "success", "message": "Meeting ended, bot stopped, spec generation started."}
+
+@app.get("/settings/", response_model=List[schemas.Setting])
+def read_settings(db: Session = Depends(database.get_db)):
+    settings = crud.get_settings(db)
+    # Seed defaults if empty
+    if not settings:
+        defaults = [
+            {"key": "spec_prompt", "value": "Create a detailed technical specification based on this summary. Include: 1. Overview 2. Functional Requirements 3. Database Schema.", "description": "Prompt used to generate the final specification"},
+            {"key": "question_prompt", "value": "You are a helpful PM. If the transcript is ambiguous, ask a short clarifying question. If clear, say NO_QUESTION.", "description": "Prompt used for real-time clarifying questions"}
+        ]
+        results = []
+        for d in defaults:
+            s = crud.update_setting(db, schemas.SettingCreate(**d))
+            results.append(s)
+        return results
+    return settings
+
+@app.put("/settings/{key}", response_model=schemas.Setting)
+def update_setting(key: str, setting: schemas.SettingCreate, db: Session = Depends(database.get_db)):
+    if key != setting.key:
+         raise HTTPException(status_code=400, detail="Key mismatch")
+    return crud.update_setting(db, setting)

@@ -103,3 +103,15 @@ class Task(TaskBase):
 
     class Config:
         from_attributes = True
+
+class SettingBase(BaseModel):
+    key: str
+    value: str
+    description: Optional[str] = None
+
+class SettingCreate(SettingBase):
+    pass
+
+class Setting(SettingBase):
+    class Config:
+        from_attributes = True

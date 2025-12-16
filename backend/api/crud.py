@@ -80,3 +80,23 @@ def create_task(db: Session, task: schemas.TaskCreate):
     db.commit()
     db.refresh(db_task)
     return db_task
+
+def get_setting(db: Session, key: str):
+    return db.query(models.Setting).filter(models.Setting.key == key).first()
+
+def get_settings(db: Session):
+    return db.query(models.Setting).all()
+
+def update_setting(db: Session, setting: schemas.SettingCreate):
+    db_setting = db.query(models.Setting).filter(models.Setting.key == setting.key).first()
+    if db_setting:
+        db_setting.value = setting.value
+        db.commit()
+        db.refresh(db_setting)
+        return db_setting
+    else:
+        db_setting = models.Setting(**setting.dict())
+        db.add(db_setting)
+        db.commit()
+        db.refresh(db_setting)
+        return db_setting

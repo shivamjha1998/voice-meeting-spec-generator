@@ -4,7 +4,7 @@ from huggingface_hub import InferenceClient
 class LLMClient:
     def __init__(self):
         # Prefer HUGGING_FACE_KEY, fallback to OPENAI_API_KEY (if user reused it), or warn.
-        self.api_key = os.getenv("HUGGING_FACE_KEY")
+        self.api_key = os.getenv("HUGGING_FACE_KEY") or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             print("⚠️ WARNING: HUGGING_FACE_KEY is not set.")
         
@@ -30,16 +30,28 @@ class LLMClient:
             print(f"HF Error (Summarize): {e}")
             return "Error generating summary."
 
-    def generate_specification(self, summary: str) -> str:
-        """Converts the summary into a Markdown Specification."""
-        system_prompt = """
-        You are a Senior Software Architect. Based on the provided meeting summary, write a detailed Project Specification in Markdown format.
-        Include these sections: 
-        1. Project Overview
-        2. Functional Requirements
-        3. Technical Constraints
-        4. Action Items
+    def generate_specification(self, summary: str, custom_prompt: str = None) -> str:
         """
+        Converts the summary into a Markdown Specification.
+        Uses custom_prompt from Settings if provided.
+        """
+        if custom_prompt:
+             # Basic template injection
+             if "{summary}" in custom_prompt:
+                 system_prompt = custom_prompt.replace("{summary}", "") # We pass summary in user msg usually, or modify system
+                 # Actually, for chat models, it's better to set the custom instructions as system
+                 system_prompt = custom_prompt
+             else:
+                 system_prompt = custom_prompt
+        else:
+            system_prompt = """
+            You are a Senior Software Architect. Based on the provided meeting summary, write a detailed Project Specification in Markdown format.
+            Include these sections: 
+            1. Project Overview
+            2. Functional Requirements
+            3. Technical Constraints
+            4. Action Items
+            """
         
         try:
             response = self.client.chat_completion(
@@ -91,16 +103,19 @@ class LLMClient:
             print(f"HF Error (Task Extraction): {e}")
             return '{"tasks": []}'
 
-    def generate_clarifying_question(self, transcript_segment: str) -> str:
+    def generate_clarifying_question(self, transcript_segment: str, custom_prompt: str = None) -> str:
         """
         Analyzes a segment of the meeting to check for ambiguities.
-        Returns a short question if needed, or empty string if not.
+        Uses custom_prompt from Settings if provided.
         """
-        system_prompt = """
-        You are a proactive Technical Project Manager in a meeting. 
-        Analyze the recent transcript. If there are ambiguous requirements, missing deadlines, or unclear technical details, ask a polite, very short clarifying question (max 1 sentence).
-        If everything is clear, return "NO_QUESTION".
-        """
+        if custom_prompt:
+            system_prompt = custom_prompt
+        else:
+            system_prompt = """
+            You are a proactive Technical Project Manager in a meeting. 
+            Analyze the recent transcript. If there are ambiguous requirements, missing deadlines, or unclear technical details, ask a polite, very short clarifying question (max 1 sentence).
+            If everything is clear, return "NO_QUESTION".
+            """
         
         try:
             response = self.client.chat_completion(

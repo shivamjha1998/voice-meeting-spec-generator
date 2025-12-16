@@ -79,3 +79,10 @@ class User(Base):
     avatar_url = Column(String)
     github_token = Column(String) #In prod, encrypt this!
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Setting(Base):
+    __tablename__ = "settings"
+
+    key = Column(String, primary_key=True, index=True)
+    value = Column(String, nullable=False)
+    description = Column(String, nullable=True)

@@ -2,12 +2,15 @@ import React, { useState, useEffect } from 'react';
 import Dashboard from './components/Dashboard';
 import MeetingMonitor from './components/MeetingMonitor';
 import SpecViewer from './components/SpecViewer';
+import Settings from './components/Settings';
+
+type ViewState = 'dashboard' | 'settings';
 
 function App() {
   const [userId, setUserId] = useState<string | null>(null);
   const [currentMeetingId, setCurrentMeetingId] = useState<number | null>(null);
-  const [projectId, setCurrentProjectId] = useState<number | null>(null);
-
+  // view state: 'dashboard' or 'settings' (defaults to dashboard)
+  const [view, setView] = useState<ViewState>('dashboard');
 
   useEffect(() => {
     // 1. Check if user_id is in the URL (returning from GitHub Login)
@@ -15,13 +18,11 @@ function App() {
     const urlUserId = params.get('user_id');
 
     if (urlUserId) {
-      // Save to storage and state
       localStorage.setItem('voice_spec_user_id', urlUserId);
       setUserId(urlUserId);
-      // Clean the URL (remove ?user_id=...)
       window.history.replaceState({}, '', window.location.pathname);
     } else {
-      // 2. Check if user is already logged in (from storage)
+      // 2. Check storage
       const storedUserId = localStorage.getItem('voice_spec_user_id');
       if (storedUserId) {
         setUserId(storedUserId);
@@ -35,7 +36,6 @@ function App() {
   };
 
   const handleLogin = () => {
-    // Redirect to Backend OAuth endpoint
     window.location.href = "http://localhost:8000/auth/github/login";
   };
 
@@ -48,12 +48,10 @@ function App() {
           <p className="text-gray-600 mb-8">
             Automatically generate project specifications from your voice meetings using AI.
           </p>
-
           <button
             onClick={handleLogin}
             className="w-full bg-gray-900 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-800 transition flex items-center justify-center gap-2"
           >
-            {/* Simple GitHub Icon SVG */}
             <svg height="20" width="20" viewBox="0 0 16 16" fill="currentColor" style={{ marginRight: '10px' }}>
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
             </svg>
@@ -69,9 +67,29 @@ function App() {
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white shadow p-4">
         <div className="container mx-auto flex justify-between items-center">
-          <h1 className="text-xl font-bold text-blue-600">Voice Meeting Spec Generator</h1>
+          <div className="flex items-center gap-6">
+            <h1 className="text-xl font-bold text-blue-600 cursor-pointer" onClick={() => { setView('dashboard'); setCurrentMeetingId(null); }}>
+              Voice Meeting Spec Generator
+            </h1>
+            {/* Navigation Links */}
+            <div className="hidden md:flex gap-4 text-sm font-medium">
+              <button
+                onClick={() => { setView('dashboard'); setCurrentMeetingId(null); }}
+                className={`${view === 'dashboard' && !currentMeetingId ? 'text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}
+              >
+                Dashboard
+              </button>
+              <button
+                onClick={() => { setView('settings'); setCurrentMeetingId(null); }}
+                className={`${view === 'settings' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}
+              >
+                Settings
+              </button>
+            </div>
+          </div>
+
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-500">User ID: {userId}</span>
+            <span className="text-sm text-gray-500 hidden sm:inline">User ID: {userId}</span>
             <button
               onClick={handleLogout}
               className="text-sm text-red-500 hover:text-red-700 font-medium"
@@ -81,20 +99,23 @@ function App() {
           </div>
         </div>
       </nav>
+
       <main className="container mx-auto mt-8 p-4">
         {currentMeetingId ? (
           <div>
             <button
               onClick={() => setCurrentMeetingId(null)}
-              className="mb-4 text-blue-600 hover:underline"
+              className="mb-4 text-blue-600 hover:underline flex items-center gap-1"
             >
               &larr; Back to Dashboard
             </button>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-[calc(100vh-150px)]">
               <MeetingMonitor meetingId={currentMeetingId} />
               <SpecViewer meetingId={currentMeetingId} />
             </div>
           </div>
+        ) : view === 'settings' ? (
+          <Settings />
         ) : (
           <Dashboard
             userId={userId}
@@ -106,4 +127,4 @@ function App() {
   );
 }
 
-export default App; 
+export default App;
