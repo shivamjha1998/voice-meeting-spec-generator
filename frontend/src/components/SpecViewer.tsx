@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Card, Button, Form, Badge, Alert, Spinner } from 'react-bootstrap';
 
 interface Specification {
     id: number;
@@ -38,7 +41,7 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncResult, setSyncResult] = useState<SyncResult[] | null>(null);
 
-    // Fetch Spec
+    // Fetch Spec (Wrapped in useCallback as per your code)
     const fetchSpec = React.useCallback(async () => {
         try {
             const res = await fetch(`http://localhost:8000/meetings/${meetingId}/specification`);
@@ -56,6 +59,7 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
         return false;
     }, [meetingId]);
 
+    // Initial Load
     useEffect(() => {
         setSpec(null);
         setError(null);
@@ -66,9 +70,9 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
         fetchSpec();
     }, [meetingId, fetchSpec]);
 
-    // Polling effect (only if not editing, to avoid overwriting user work)
+    // Polling effect
     useEffect(() => {
-        if (!isLoading || isEditing) return; // Don't poll while editing
+        if (!isLoading || isEditing) return;
         const interval = setInterval(async () => {
             const found = await fetchSpec();
             if (found) clearInterval(interval);
@@ -88,7 +92,7 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
         }
     };
 
-    // --- NEW: Edit Logic ---
+    // Edit Logic
     const handleEditToggle = () => {
         if (spec) {
             setEditContent(spec.content);
@@ -136,12 +140,10 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
         a.click();
     };
 
-    // --- Task Logic (Existing) ---
+    // Task Logic
     const handlePreviewTasks = async () => {
         setIsPreviewingTasks(true);
         try {
-            // Note: If user edited spec, backend fetches from DB, so our Save logic ensures
-            // tasks are extracted from the LATEST version.
             const res = await fetch(`http://localhost:8000/meetings/${meetingId}/tasks/preview`);
             if (res.ok) {
                 const data = await res.json();
@@ -156,8 +158,6 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
         }
     };
 
-    // ... (handleDeleteTask, handleTaskChange, handleSyncToGitHub remain the same) ...
-    // Re-implementing them briefly for completeness of this file block
     const handleDeleteTask = (index: number) => {
         const newTasks = [...tasks];
         newTasks.splice(index, 1);
@@ -190,155 +190,152 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
     };
 
     return (
-        <div className="d-flex flex-column gap-4">
-            {/* Spec Viewer/Editor Card */}
-            <div className="card shadow-sm" style={{ minHeight: '600px' }}>
-                <div className="card-header d-flex justify-content-between align-items-center bg-white">
-                    <h2 className="h5 mb-0 fw-bold">Specification Viewer</h2>
+        <div className="d-flex flex-column h-100 gap-3">
+            {/* Main Spec Card - Uses flex-grow-1 to take available space */}
+            <Card className="shadow-sm border-0 flex-grow-1 overflow-hidden d-flex flex-column" style={{ minHeight: 0 }}>
+                <Card.Header className="bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                    <h5 className="mb-0 fw-bold">📄 Specification Viewer</h5>
                     <div className="d-flex align-items-center gap-2">
                         {spec && !isEditing && (
-                            <button
-                                onClick={handleEditToggle}
-                                className="btn btn-outline-secondary btn-sm"
-                            >
+                            <Button variant="outline-secondary" size="sm" onClick={handleEditToggle}>
                                 ✏️ Edit
-                            </button>
+                            </Button>
                         )}
-                        {spec && <span className="badge bg-light text-dark border">v{spec.version}</span>}
+                        {spec && <Badge bg="light" text="dark" className="border">v{spec.version}</Badge>}
                     </div>
-                </div>
+                </Card.Header>
 
-                <div className="card-body p-0 position-relative d-flex flex-column">
+                {/* Content Body - Handles scrolling internally */}
+                <Card.Body className="p-0 d-flex flex-column flex-grow-1 overflow-hidden position-relative bg-white">
                     {isLoading ? (
-                        <div className="d-flex justify-content-center align-items-center flex-grow-1 text-primary">
-                            <div className="spinner-border" role="status">
-                                <span className="visually-hidden">Loading...</span>
-                            </div>
-                            <span className="ms-2">Generating Specification...</span>
+                        <div className="h-100 d-flex flex-column align-items-center justify-content-center text-primary gap-3">
+                            <Spinner animation="border" />
+                            <span className="fw-bold">Generating Specification...</span>
                         </div>
                     ) : error ? (
-                        <div className="d-flex justify-content-center align-items-center flex-grow-1 text-danger">{error}</div>
+                        <div className="h-100 d-flex align-items-center justify-content-center text-danger">{error}</div>
                     ) : isEditing ? (
-                        <textarea
-                            className="form-control border-0 h-100 rounded-0 resize-none font-monospace"
-                            style={{ minHeight: '500px' }}
+                        <Form.Control
+                            as="textarea"
+                            className="h-100 border-0 p-4 font-monospace shadow-none resize-none"
+                            style={{ fontSize: '0.875rem', minHeight: '60vh' }}
                             value={editContent}
                             onChange={(e) => setEditContent(e.target.value)}
+                            placeholder="Write your specification here..."
                         />
                     ) : spec ? (
-                        <div className="p-4 font-monospace whitespace-pre-wrap flex-grow-1">
-                            {spec.content}
+                        <div className="h-100 overflow-auto p-4">
+                            {/* Render Markdown instead of raw text */}
+                            <div className="markdown-body">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {spec.content}
+                                </ReactMarkdown>
+                            </div>
                         </div>
                     ) : (
-                        <div className="d-flex justify-content-center align-items-center flex-grow-1 text-muted">
-                            <p className="mb-0">No specification generated yet.</p>
+                        <div className="h-100 d-flex flex-column align-items-center justify-content-center text-muted">
+                            <p className="mb-1">No specification generated yet.</p>
+                            <small>End the meeting to generate the first draft.</small>
                         </div>
                     )}
-                </div>
+                </Card.Body>
 
-                <div className="card-footer bg-white d-flex gap-2">
-                    {isEditing ? (
-                        <>
-                            <button
-                                onClick={handleSaveSpec}
-                                disabled={isSaving}
-                                className="btn btn-primary fw-bold"
-                            >
-                                {isSaving ? "Saving..." : "Save Changes"}
-                            </button>
-                            <button
-                                onClick={handleCancelEdit}
-                                className="btn btn-secondary"
-                            >
-                                Cancel
-                            </button>
-                        </>
-                    ) : (
-                        <>
-                            <button onClick={handleGenerate} disabled={isLoading} className={`btn ${isLoading ? "btn-secondary disabled" : "btn-primary"}`}>
-                                {spec ? "Regenerate Spec" : "Generate Spec"}
-                            </button>
-                            {spec && (
-                                <>
-                                    <button onClick={handleExport} className="btn btn-success">
-                                        Export MD
-                                    </button>
-                                    {tasks.length === 0 && !syncResult && (
-                                        <button onClick={handlePreviewTasks} disabled={isPreviewingTasks} className="btn btn-dark">
-                                            {isPreviewingTasks ? "Extracting..." : "Review Tasks"}
-                                        </button>
-                                    )}
-                                </>
-                            )}
-                        </>
-                    )}
-                </div>
-            </div>
-
-            {/* Task Review Card */}
-            {(tasks.length > 0 || syncResult) && (
-                <div className="card shadow-sm mt-4">
-                    <div className="card-header bg-white">
-                        <h2 className="h5 mb-0 fw-bold">Task Review & Sync</h2>
+                {/* Footer Actions */}
+                <Card.Footer className="bg-white border-top p-3">
+                    <div className="d-flex gap-2">
+                        {isEditing ? (
+                            <>
+                                <Button variant="primary" size="sm" onClick={handleSaveSpec} disabled={isSaving}>
+                                    {isSaving ? "Saving..." : "Save Changes"}
+                                </Button>
+                                <Button variant="outline-secondary" size="sm" onClick={handleCancelEdit}>
+                                    Cancel
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                <Button
+                                    variant="primary" size="sm"
+                                    onClick={handleGenerate}
+                                    disabled={isLoading}
+                                >
+                                    {spec ? "Regenerate Spec" : "Generate Spec"}
+                                </Button>
+                                {spec && (
+                                    <>
+                                        <Button variant="success" size="sm" onClick={handleExport}>
+                                            Export MD
+                                        </Button>
+                                        {tasks.length === 0 && !syncResult && (
+                                            <Button variant="dark" size="sm" className="ms-auto" onClick={handlePreviewTasks} disabled={isPreviewingTasks}>
+                                                {isPreviewingTasks ? "Extracting..." : "Review Tasks"}
+                                            </Button>
+                                        )}
+                                    </>
+                                )}
+                            </>
+                        )}
                     </div>
-                    <div className="card-body">
+                </Card.Footer>
+            </Card>
 
+            {/* Task Review Section (Collapsible) */}
+            {(tasks.length > 0 || syncResult) && (
+                <Card className="shadow-sm border-0 flex-shrink-0 d-flex flex-column overflow-hidden" style={{ height: '300px' }}>
+                    <Card.Header className="bg-light border-bottom py-2 px-3 d-flex justify-content-between align-items-center">
+                        <h6 className="mb-0 fw-bold text-success">✅ Task Review</h6>
+                        <Button variant="link" size="sm" className="text-muted text-decoration-none p-0" onClick={() => { setTasks([]); setSyncResult(null); }}>✕</Button>
+                    </Card.Header>
+
+                    <Card.Body className="overflow-auto p-3">
                         {syncResult ? (
-                            <div className="alert alert-success">
-                                <h3 className="h6 fw-bold mb-2">Sync Complete!</h3>
-                                <ul className="list-unstyled mb-0 small">
+                            <Alert variant="success">
+                                <Alert.Heading className="h6">Sync Complete!</Alert.Heading>
+                                <ul className="mb-0 ps-3 small">
                                     {syncResult.map((r, idx) => (
                                         <li key={idx}>
-                                            {r.title} -
-                                            {r.status === "created" ? (
-                                                <a href={r.issue_url} target="_blank" rel="noreferrer" className="alert-link ms-1">View Issue</a>
-                                            ) : (
-                                                <span className="text-danger ms-1">Failed</span>
-                                            )}
+                                            {r.title}
+                                            {r.status === "created" && <a href={r.issue_url} target="_blank" rel="noreferrer" className="ms-2 fw-bold">View Issue</a>}
                                         </li>
                                     ))}
                                 </ul>
-                                <button onClick={() => setSyncResult(null)} className="btn btn-link btn-sm p-0 mt-2 text-decoration-none text-muted">Dismiss</button>
-                            </div>
+                            </Alert>
                         ) : (
-                            <div className="d-flex flex-column gap-3">
-                                {tasks.map((task, idx) => (
-                                    <div key={idx} className="card bg-light border-0">
-                                        <div className="card-body p-3 d-flex gap-3 align-items-start">
-                                            <div className="flex-grow-1">
-                                                <input
-                                                    className="form-control fw-bold mb-2"
-                                                    placeholder="Task Title"
-                                                    value={task.title}
-                                                    onChange={(e) => handleTaskChange(idx, 'title', e.target.value)}
-                                                />
-                                                <textarea
-                                                    className="form-control font-monospace"
-                                                    style={{ minHeight: '100px', fontSize: '0.9rem' }}
-                                                    value={task.description}
-                                                    onChange={(e) => handleTaskChange(idx, 'description', e.target.value)}
-                                                />
-                                            </div>
-                                            <button
-                                                onClick={() => handleDeleteTask(idx)}
-                                                className="btn btn-outline-danger btn-sm"
-                                                title="Delete Task"
-                                            >
-                                                &times;
-                                            </button>
+                            tasks.map((task, idx) => (
+                                <Card key={idx} className="mb-2 border bg-light">
+                                    <Card.Body className="p-2 d-flex gap-3 align-items-start">
+                                        <div className="flex-grow-1">
+                                            <Form.Control
+                                                type="text"
+                                                value={task.title}
+                                                onChange={(e) => handleTaskChange(idx, 'title', e.target.value)}
+                                                className="mb-2 fw-bold form-control-sm border-0 bg-transparent px-0 shadow-none"
+                                                placeholder="Task Title"
+                                            />
+                                            <Form.Control
+                                                as="textarea"
+                                                rows={2}
+                                                value={task.description}
+                                                onChange={(e) => handleTaskChange(idx, 'description', e.target.value)}
+                                                className="form-control-sm"
+                                                placeholder="Description..."
+                                            />
                                         </div>
-                                    </div>
-                                ))}
-                                <div className="d-flex justify-content-end gap-2 mt-3">
-                                    <button onClick={() => setTasks([])} className="btn btn-secondary">Cancel</button>
-                                    <button onClick={handleSyncToGitHub} disabled={isSyncing} className="btn btn-dark fw-bold">
-                                        {isSyncing ? "Syncing..." : `Sync ${tasks.length} Issues to GitHub`}
-                                    </button>
-                                </div>
-                            </div>
+                                        <Button variant="link" className="text-muted p-0" onClick={() => handleDeleteTask(idx)}>✕</Button>
+                                    </Card.Body>
+                                </Card>
+                            ))
                         )}
-                    </div>
-                </div>
+                    </Card.Body>
+
+                    {!syncResult && (
+                        <Card.Footer className="bg-white p-2 text-end">
+                            <Button variant="dark" size="sm" onClick={handleSyncToGitHub} disabled={isSyncing}>
+                                {isSyncing ? "Syncing..." : `Sync ${tasks.length} Issues to GitHub`}
+                            </Button>
+                        </Card.Footer>
+                    )}
+                </Card>
             )}
         </div>
     );

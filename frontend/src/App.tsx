@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import Dashboard from './components/Dashboard';
 import MeetingMonitor from './components/MeetingMonitor';
 import SpecViewer from './components/SpecViewer';
