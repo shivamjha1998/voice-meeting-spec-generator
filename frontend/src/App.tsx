@@ -64,9 +64,9 @@ function App() {
 
   // --- Main App Screen ---
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow p-4">
-        <div className="container mx-auto flex justify-between items-center">
+    <div className="d-flex flex-column min-vh-100 bg-light">
+      <nav className="navbar navbar-expand-lg navbar-light bg-white border-bottom px-4">
+        <div className="container-fluid d-flex justify-content-between align-items-center">
           <div className="flex items-center gap-6">
             <h1 className="text-xl font-bold text-blue-600 cursor-pointer" onClick={() => { setView('dashboard'); setCurrentMeetingId(null); }}>
               Voice Meeting Spec Generator
@@ -100,7 +100,7 @@ function App() {
         </div>
       </nav>
 
-      <main className="container mx-auto mt-8 p-4">
+      <main className="container-fluid px-4 mt-4 flex-grow-1">
         {currentMeetingId ? (
           <div>
             <button
@@ -109,9 +109,13 @@ function App() {
             >
               &larr; Back to Dashboard
             </button>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-[calc(100vh-150px)]">
-              <MeetingMonitor meetingId={currentMeetingId} />
-              <SpecViewer meetingId={currentMeetingId} />
+            <div className="row g-4">
+              <div className="col-12">
+                <MeetingMonitor meetingId={currentMeetingId} />
+              </div>
+              <div className="col-12">
+                <SpecViewer meetingId={currentMeetingId} />
+              </div>
             </div>
           </div>
         ) : view === 'settings' ? (

@@ -106,22 +106,22 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId, onMeetingEnd }) => {
     };
 
     return (
-        <div className="border p-4 rounded shadow bg-white h-full flex flex-col">
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">Meeting Monitor</h2>
-                <div>
-                    <span className={`px-2 py-1 rounded text-white text-sm mr-2 ${status === "Connected" ? "bg-green-500" : "bg-gray-500"}`}>
+        <div className="card shadow-sm h-100">
+            <div className="card-header d-flex justify-content-between align-items-center bg-white">
+                <h2 className="h5 mb-0 fw-bold">Live Monitor</h2>
+                <div className="d-flex align-items-center">
+                    <span className={`badge me-2 ${status === "Connected" ? "bg-success" : "bg-secondary"}`}>
                         {status}
                     </span>
-                    <div className="flex gap-2">
+                    <div className="d-flex gap-2">
                         <button
-                            className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                            className="btn btn-primary btn-sm"
                             onClick={toggleMonitoring}
                         >
                             Summon Bot
                         </button>
                         <button
-                            className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
+                            className="btn btn-danger btn-sm"
                             onClick={handleEndMeeting}
                         >
                             End Meeting
@@ -130,18 +130,18 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId, onMeetingEnd }) => {
                 </div>
             </div>
 
-            <div className="flex-1 h-96 overflow-y-auto border p-4 bg-gray-50 rounded">
+            <div className="card-body overflow-auto bg-light p-3" style={{ maxHeight: '600px' }}>
                 {transcripts.length === 0 ? (
-                    <p className="text-gray-400 text-center mt-10">
+                    <div className="d-flex justify-content-center align-items-center h-100 text-muted">
                         Waiting for speech...
-                    </p>
+                    </div>
                 ) : (
                     transcripts.map((t, idx) => (
-                        <div key={t.id || idx} className="mb-4">
-                            <div className="text-xs text-gray-500 mb-1">
-                                {new Date(t.timestamp).toLocaleTimeString()} - <span className="font-bold text-blue-600">{t.speaker}</span>
+                        <div key={t.id || idx} className="mb-3">
+                            <div className="small text-muted mb-1">
+                                {new Date(t.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - <span className="fw-bold text-primary">{t.speaker}</span>
                             </div>
-                            <div className="bg-white p-2 rounded border shadow-sm text-gray-800">
+                            <div className="bg-white p-2 rounded border shadow-sm text-dark">
                                 {t.text}
                             </div>
                         </div>

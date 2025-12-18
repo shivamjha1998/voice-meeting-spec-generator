@@ -184,71 +184,81 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
     };
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="d-flex flex-column gap-4">
             {/* Spec Viewer/Editor Card */}
-            <div className="border p-4 rounded shadow bg-white h-96 flex flex-col">
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold">Specification Viewer</h2>
-                    <div className="flex items-center gap-2">
+            <div className="card shadow-sm" style={{ minHeight: '600px' }}>
+                <div className="card-header d-flex justify-content-between align-items-center bg-white">
+                    <h2 className="h5 mb-0 fw-bold">Specification Viewer</h2>
+                    <div className="d-flex align-items-center gap-2">
                         {spec && !isEditing && (
                             <button
                                 onClick={handleEditToggle}
-                                className="text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 px-3 py-1 rounded"
+                                className="btn btn-outline-secondary btn-sm"
                             >
                                 ✏️ Edit
                             </button>
                         )}
-                        {spec && <span className="text-sm text-gray-500">v{spec.version}</span>}
+                        {spec && <span className="badge bg-light text-dark border">v{spec.version}</span>}
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto bg-gray-50 p-4 rounded border font-mono whitespace-pre-wrap text-sm relative">
+                <div className="card-body p-0 position-relative d-flex flex-column">
                     {isLoading ? (
-                        <div className="text-blue-600 animate-pulse text-center mt-10">Generating Specification...</div>
+                        <div className="d-flex justify-content-center align-items-center flex-grow-1 text-primary">
+                            <div className="spinner-border" role="status">
+                                <span className="visually-hidden">Loading...</span>
+                            </div>
+                            <span className="ms-2">Generating Specification...</span>
+                        </div>
                     ) : error ? (
-                        <div className="text-red-500 text-center">{error}</div>
+                        <div className="d-flex justify-content-center align-items-center flex-grow-1 text-danger">{error}</div>
                     ) : isEditing ? (
                         <textarea
-                            className="w-full h-full bg-white p-2 border focus:outline-blue-500 resize-none"
+                            className="form-control border-0 h-100 rounded-0 resize-none font-monospace"
+                            style={{ minHeight: '500px' }}
                             value={editContent}
                             onChange={(e) => setEditContent(e.target.value)}
                         />
                     ) : spec ? (
-                        spec.content
+                        <div className="p-4 font-monospace whitespace-pre-wrap flex-grow-1">
+                            {spec.content}
+                        </div>
                     ) : (
-                        <div className="text-gray-400 text-center mt-10">No specification generated yet.</div>
+                        <div className="d-flex justify-content-center align-items-center flex-grow-1 text-muted">
+                            <p className="mb-0">No specification generated yet.</p>
+                        </div>
                     )}
                 </div>
 
-                <div className="mt-4 flex gap-2">
+                <div className="card-footer bg-white d-flex gap-2">
                     {isEditing ? (
                         <>
                             <button
                                 onClick={handleSaveSpec}
                                 disabled={isSaving}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold"
+                                className="btn btn-primary fw-bold"
                             >
                                 {isSaving ? "Saving..." : "Save Changes"}
                             </button>
                             <button
                                 onClick={handleCancelEdit}
-                                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded"
+                                className="btn btn-secondary"
                             >
                                 Cancel
                             </button>
                         </>
                     ) : (
                         <>
-                            <button onClick={handleGenerate} disabled={isLoading} className={`px-4 py-2 rounded text-white transition ${isLoading ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"}`}>
+                            <button onClick={handleGenerate} disabled={isLoading} className={`btn ${isLoading ? "btn-secondary disabled" : "btn-primary"}`}>
                                 {spec ? "Regenerate Spec" : "Generate Spec"}
                             </button>
                             {spec && (
                                 <>
-                                    <button onClick={handleExport} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">
+                                    <button onClick={handleExport} className="btn btn-success">
                                         Export MD
                                     </button>
                                     {tasks.length === 0 && !syncResult && (
-                                        <button onClick={handlePreviewTasks} disabled={isPreviewingTasks} className="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded">
+                                        <button onClick={handlePreviewTasks} disabled={isPreviewingTasks} className="btn btn-dark">
                                             {isPreviewingTasks ? "Extracting..." : "Review Tasks"}
                                         </button>
                                     )}
@@ -292,7 +302,7 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
                                             onChange={(e) => handleTaskChange(idx, 'title', e.target.value)}
                                         />
                                         <textarea
-                                            className="w-full border p-1 rounded text-sm h-20"
+                                            className="w-full border p-1 rounded text-sm h-32"
                                             value={task.description}
                                             onChange={(e) => handleTaskChange(idx, 'description', e.target.value)}
                                         />
