@@ -24,9 +24,16 @@ GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 CALLBACK_URL = os.getenv("CALLBACK_URL", "http://localhost:8000/auth/github/callback")
 
-models.Base.metadata.create_all(bind=database.engine)
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="Voice Meeting Spec Generator API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Create DB tables
+    models.Base.metadata.create_all(bind=database.engine)
+    yield
+    # Shutdown: Clean up if necessary (e.g. close connections)
+
+app = FastAPI(title="Voice Meeting Spec Generator API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
