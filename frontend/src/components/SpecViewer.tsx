@@ -269,55 +269,69 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
                 </div>
             </div>
 
-            {/* Task Review Card (Same as before) */}
+            {/* Task Review Card */}
             {(tasks.length > 0 || syncResult) && (
-                <div className="border p-4 rounded shadow bg-white">
-                    <h2 className="text-xl font-bold mb-4">Task Review & Sync</h2>
+                <div className="card shadow-sm mt-4">
+                    <div className="card-header bg-white">
+                        <h2 className="h5 mb-0 fw-bold">Task Review & Sync</h2>
+                    </div>
+                    <div className="card-body">
 
-                    {syncResult ? (
-                        <div className="bg-green-50 p-4 rounded">
-                            <h3 className="font-bold text-green-700 mb-2">Sync Complete!</h3>
-                            <ul className="list-disc pl-5 text-sm">
-                                {syncResult.map((r: any, idx: number) => (
-                                    <li key={idx}>
-                                        {r.title} -
-                                        {r.status === "created" ? (
-                                            <a href={r.issue_url} target="_blank" rel="noreferrer" className="text-blue-600 underline ml-1">View Issue</a>
-                                        ) : (
-                                            <span className="text-red-500 ml-1">Failed</span>
-                                        )}
-                                    </li>
-                                ))}
-                            </ul>
-                            <button onClick={() => setSyncResult(null)} className="mt-4 text-sm text-gray-500 hover:underline">Dismiss</button>
-                        </div>
-                    ) : (
-                        <div className="space-y-4">
-                            {tasks.map((task, idx) => (
-                                <div key={idx} className="border p-3 rounded bg-gray-50 flex gap-4 items-start">
-                                    <div className="flex-1 space-y-2">
-                                        <input
-                                            className="w-full border p-1 rounded font-semibold"
-                                            value={task.title}
-                                            onChange={(e) => handleTaskChange(idx, 'title', e.target.value)}
-                                        />
-                                        <textarea
-                                            className="w-full border p-1 rounded text-sm h-32"
-                                            value={task.description}
-                                            onChange={(e) => handleTaskChange(idx, 'description', e.target.value)}
-                                        />
-                                    </div>
-                                    <button onClick={() => handleDeleteTask(idx)} className="text-red-500 hover:text-red-700 text-xl font-bold">&times;</button>
-                                </div>
-                            ))}
-                            <div className="flex justify-end gap-2 mt-4">
-                                <button onClick={() => setTasks([])} className="text-gray-500 px-4 py-2">Cancel</button>
-                                <button onClick={handleSyncToGitHub} disabled={isSyncing} className="bg-black text-white px-6 py-2 rounded font-bold hover:bg-gray-800">
-                                    {isSyncing ? "Syncing..." : `Sync ${tasks.length} Issues to GitHub`}
-                                </button>
+                        {syncResult ? (
+                            <div className="alert alert-success">
+                                <h3 className="h6 fw-bold mb-2">Sync Complete!</h3>
+                                <ul className="list-unstyled mb-0 small">
+                                    {syncResult.map((r: any, idx: number) => (
+                                        <li key={idx}>
+                                            {r.title} -
+                                            {r.status === "created" ? (
+                                                <a href={r.issue_url} target="_blank" rel="noreferrer" className="alert-link ms-1">View Issue</a>
+                                            ) : (
+                                                <span className="text-danger ms-1">Failed</span>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                                <button onClick={() => setSyncResult(null)} className="btn btn-link btn-sm p-0 mt-2 text-decoration-none text-muted">Dismiss</button>
                             </div>
-                        </div>
-                    )}
+                        ) : (
+                            <div className="d-flex flex-column gap-3">
+                                {tasks.map((task, idx) => (
+                                    <div key={idx} className="card bg-light border-0">
+                                        <div className="card-body p-3 d-flex gap-3 align-items-start">
+                                            <div className="flex-grow-1">
+                                                <input
+                                                    className="form-control fw-bold mb-2"
+                                                    placeholder="Task Title"
+                                                    value={task.title}
+                                                    onChange={(e) => handleTaskChange(idx, 'title', e.target.value)}
+                                                />
+                                                <textarea
+                                                    className="form-control font-monospace"
+                                                    style={{ minHeight: '100px', fontSize: '0.9rem' }}
+                                                    value={task.description}
+                                                    onChange={(e) => handleTaskChange(idx, 'description', e.target.value)}
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={() => handleDeleteTask(idx)}
+                                                className="btn btn-outline-danger btn-sm"
+                                                title="Delete Task"
+                                            >
+                                                &times;
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                                <div className="d-flex justify-content-end gap-2 mt-3">
+                                    <button onClick={() => setTasks([])} className="btn btn-secondary">Cancel</button>
+                                    <button onClick={handleSyncToGitHub} disabled={isSyncing} className="btn btn-dark fw-bold">
+                                        {isSyncing ? "Syncing..." : `Sync ${tasks.length} Issues to GitHub`}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
         </div>

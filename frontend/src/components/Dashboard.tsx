@@ -115,79 +115,116 @@ const Dashboard: React.FC<Props> = ({ userId, onSelectMeeting }) => {
             console.error(err);
         }
     };
+    const [loadingMeeting, setLoadingMeeting] = useState<number | null>(null);
+
+    const handleStartMeeting = async (projectId: number) => {
+        setLoadingMeeting(projectId);
+        await handleCreateMeeting(projectId);
+        setLoadingMeeting(null);
+    };
 
     return (
-        <div className="p-6">
-            <h1 className="text-3xl font-bold mb-6">Dashboard</h1>
-
-            {/* Create Project Bar */}
-            <div className="mb-8 bg-white p-4 rounded shadow flex flex-col gap-4">
-                <h3 className="font-semibold text-gray-700">Create New Project</h3>
-                <div className="flex gap-4">
-                    <input
-                        type="text"
-                        placeholder="Project Name"
-                        className="border p-2 rounded flex-1"
-                        value={newProjectName}
-                        onChange={e => setNewProjectName(e.target.value)}
-                    />
-
-                    {/* Repository Dropdown */}
-                    <select
-                        className="border p-2 rounded flex-1"
-                        value={selectedRepoUrl}
-                        onChange={e => setSelectedRepoUrl(e.target.value)}
-                    >
-                        <option value="" disabled>Select GitHub Repository</option>
-                        {repos.map(repo => (
-                            <option key={repo.id} value={repo.html_url}>
-                                {repo.full_name}
-                            </option>
-                        ))}
-                    </select>
-
-                    <button
-                        onClick={handleCreateProject}
-                        disabled={loading}
-                        className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-                    >
-                        {loading ? "Creating..." : "Create"}
-                    </button>
+        <div className="d-flex flex-column gap-4">
+            <div className="d-flex justify-content-between align-items-center">
+                <h2 className="h4 fw-bold mb-0">Dashboard</h2>
+                <div className="text-muted">
+                    {projects.length > 0 ? (
+                        <span>Total Projects: <span className="fw-bold text-dark">{projects.length}</span></span>
+                    ) : (
+                        <span>No projects found.</span>
+                    )}
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {projects.map(project => (
-                    <div key={project.id} className="border p-6 rounded shadow bg-white flex flex-col justify-between">
-                        <div>
-                            <h3 className="text-xl font-bold mb-1">{project.name}</h3>
-                            <p className="text-gray-500 text-sm mb-4">{project.description}</p>
-
-                            <h4 className="font-semibold text-gray-700 mb-2 border-b pb-1">Recent Meetings</h4>
-                            <ul className="space-y-2 mb-4 max-h-40 overflow-y-auto">
-                                {project.meetings && project.meetings.length > 0 ? (
-                                    project.meetings.map(m => (
-                                        <li key={m.id} className="flex justify-between items-center text-sm">
-                                            <span>Meeting #{m.id}</span>
-                                            <button
-                                                onClick={() => onSelectMeeting(m.id)}
-                                                className="text-blue-600 hover:underline"
-                                            >
-                                                Open
-                                            </button>
-                                        </li>
-                                    ))
-                                ) : (
-                                    <li className="text-gray-400 text-sm">No meetings yet.</li>
-                                )}
-                            </ul>
+            {/* Create Project Section */}
+            <div className="card shadow-sm">
+                <div className="card-header bg-white">
+                    <h3 className="h5 mb-0 fw-bold">Create New Project</h3>
+                </div>
+                <div className="card-body">
+                    <div className="row g-3">
+                        <div className="col-md-5">
+                            <input
+                                type="text"
+                                className="form-control"
+                                placeholder="Enter Project Name"
+                                value={newProjectName}
+                                onChange={(e) => setNewProjectName(e.target.value)}
+                            />
                         </div>
-                        <button
-                            onClick={() => handleCreateMeeting(project.id)}
-                            className="w-full mt-4 bg-green-50 text-green-700 border border-green-200 py-2 rounded hover:bg-green-100 transition"
-                        >
-                            + Start New Meeting
-                        </button>
+                        <div className="col-md-5">
+                            <select
+                                className="form-select"
+                                value={selectedRepoUrl}
+                                onChange={e => setSelectedRepoUrl(e.target.value)}
+                            >
+                                <option value="" disabled>Select GitHub Repository</option>
+                                {repos.map(repo => (
+                                    <option key={repo.id} value={repo.html_url}>
+                                        {repo.full_name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="col-md-2">
+                            <button
+                                onClick={handleCreateProject}
+                                disabled={loading}
+                                className="btn btn-primary w-100 fw-bold"
+                            >
+                                {loading ? "Creating..." : "Create"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Projects list */}
+            <div className="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+                {projects.map((project) => (
+                    <div key={project.id} className="col">
+                        <div className="card h-100 shadow-sm hover-shadow transition-all">
+                            <div className="card-body d-flex flex-column">
+                                <div className="d-flex justify-content-between align-items-start mb-3">
+                                    <h3 className="h5 fw-bold text-primary mb-0 text-truncate" title={project.name}>
+                                        {project.name}
+                                    </h3>
+                                    <span className="badge bg-light text-muted border">ID: {project.id}</span>
+                                </div>
+                                <p className="text-muted small mb-4 flex-grow-1">
+                                    {project.description}
+                                </p>
+
+                                <h6 className="fw-bold text-dark border-bottom pb-2 mb-2">Recent Meetings</h6>
+                                <ul className="list-group list-group-flush mb-3 flex-grow-1" style={{ maxHeight: '150px', overflowY: 'auto' }}>
+                                    {project.meetings && project.meetings.length > 0 ? (
+                                        project.meetings.map(m => (
+                                            <li key={m.id} className="list-group-item d-flex justify-content-between align-items-center px-0 py-1">
+                                                <small>Meeting #{m.id}</small>
+                                                <button
+                                                    onClick={() => onSelectMeeting(m.id)}
+                                                    className="btn btn-link btn-sm p-0 text-decoration-none"
+                                                >
+                                                    Open
+                                                </button>
+                                            </li>
+                                        ))
+                                    ) : (
+                                        <li className="list-group-item px-0 text-muted small border-0">No meetings yet.</li>
+                                    )}
+                                </ul>
+
+                                <div className="d-grid mt-auto">
+                                    <button
+                                        onClick={() => handleStartMeeting(project.id)}
+                                        disabled={loadingMeeting === project.id}
+                                        className="btn btn-success fw-bold shadow-sm"
+                                    >
+                                        {loadingMeeting === project.id ? "Starting..." : "+ Start New Meeting"}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 ))}
             </div>

@@ -44,29 +44,32 @@ const Settings: React.FC = () => {
     };
 
     return (
-        <div className="max-w-4xl mx-auto mt-8">
-            <h1 className="text-2xl font-bold mb-6">System Settings</h1>
+        <div className="container mt-4" style={{ maxWidth: '800px' }}>
+            <h1 className="h3 fw-bold mb-4">System Settings</h1>
 
-            <div className="grid gap-6">
+            <div className="d-flex flex-column gap-4">
                 {settings.map((s) => (
-                    <div key={s.key} className="bg-white p-6 rounded shadow border">
-                        <div className="mb-2">
-                            <h3 className="font-bold text-lg">{s.key.replace("_", " ").toUpperCase()}</h3>
-                            <p className="text-gray-500 text-sm">{s.description}</p>
-                        </div>
-                        <textarea
-                            className="w-full border p-2 rounded h-32 font-mono text-sm"
-                            value={s.value}
-                            onChange={(e) => handleChange(s.key, e.target.value)}
-                        />
-                        <div className="mt-2 text-right">
-                            <button
-                                onClick={() => handleSave(s.key, s.value)}
-                                disabled={loading}
-                                className="bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
-                            >
-                                Save Changes
-                            </button>
+                    <div key={s.key} className="card shadow-sm">
+                        <div className="card-body">
+                            <div className="mb-3">
+                                <h3 className="h6 fw-bold mb-1">{s.key.replace("_", " ").toUpperCase()}</h3>
+                                <p className="text-muted small mb-0">{s.description}</p>
+                            </div>
+                            <textarea
+                                className="form-control font-monospace mb-3"
+                                style={{ minHeight: '120px', fontSize: '0.9rem' }}
+                                value={s.value}
+                                onChange={(e) => handleChange(s.key, e.target.value)}
+                            />
+                            <div className="text-end">
+                                <button
+                                    onClick={() => handleSave(s.key, s.value)}
+                                    disabled={loading}
+                                    className="btn btn-primary fw-bold px-4 shadow-sm"
+                                >
+                                    {loading ? "Saving..." : "Save Changes"}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 ))}

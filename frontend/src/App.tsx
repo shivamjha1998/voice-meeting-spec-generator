@@ -75,13 +75,13 @@ function App() {
             <div className="hidden md:flex gap-4 text-sm font-medium">
               <button
                 onClick={() => { setView('dashboard'); setCurrentMeetingId(null); }}
-                className={`${view === 'dashboard' && !currentMeetingId ? 'text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}
+                className={`${view === 'dashboard' && !currentMeetingId ? 'btn btn-primary mx-2' : 'btn btn-outline-primary mx-2'}`}
               >
                 Dashboard
               </button>
               <button
                 onClick={() => { setView('settings'); setCurrentMeetingId(null); }}
-                className={`${view === 'settings' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}
+                className={`${view === 'settings' ? 'btn btn-primary mx-2' : 'btn btn-outline-primary mx-2'}`}
               >
                 Settings
               </button>
@@ -92,7 +92,7 @@ function App() {
             <span className="text-sm text-gray-500 hidden sm:inline">User ID: {userId}</span>
             <button
               onClick={handleLogout}
-              className="text-sm text-red-500 hover:text-red-700 font-medium"
+              className="btn btn-danger mx-2"
             >
               Logout
             </button>
@@ -105,7 +105,7 @@ function App() {
           <div>
             <button
               onClick={() => setCurrentMeetingId(null)}
-              className="mb-4 text-blue-600 hover:underline flex items-center gap-1"
+              className="btn btn-primary m-2"
             >
               &larr; Back to Dashboard
             </button>

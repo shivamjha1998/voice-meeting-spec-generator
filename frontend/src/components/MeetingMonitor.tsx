@@ -115,13 +115,13 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId, onMeetingEnd }) => {
                     </span>
                     <div className="d-flex gap-2">
                         <button
-                            className="btn btn-primary btn-sm"
+                            className="btn btn-primary"
                             onClick={toggleMonitoring}
                         >
                             Summon Bot
                         </button>
                         <button
-                            className="btn btn-danger btn-sm"
+                            className="btn btn-danger"
                             onClick={handleEndMeeting}
                         >
                             End Meeting
