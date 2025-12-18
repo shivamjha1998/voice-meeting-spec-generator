@@ -59,7 +59,7 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId, onMeetingEnd }) => {
 
         ws.onclose = () => {
             console.log("WS Disconnected");
-            if (status === "Connected") setStatus("Disconnected");
+            setStatus("Disconnected");
         };
 
         ws.onerror = (err) => {
@@ -68,7 +68,9 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId, onMeetingEnd }) => {
         };
 
         return () => {
-            ws.close();
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            }
         };
     }, [meetingId]);
 

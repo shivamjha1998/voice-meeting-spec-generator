@@ -32,7 +32,7 @@ const Settings: React.FC = () => {
                 body: JSON.stringify({ ...setting, value: newValue })
             });
             alert("Saved!");
-        } catch (e) {
+        } catch {
             alert("Error saving setting");
         } finally {
             setLoading(false);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Dashboard from './components/Dashboard';
 import MeetingMonitor from './components/MeetingMonitor';
 import SpecViewer from './components/SpecViewer';
@@ -7,28 +7,19 @@ import Settings from './components/Settings';
 type ViewState = 'dashboard' | 'settings';
 
 function App() {
-  const [userId, setUserId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlUserId = params.get('user_id');
+    if (urlUserId) {
+      localStorage.setItem('voice_spec_user_id', urlUserId);
+      window.history.replaceState({}, '', window.location.pathname);
+      return urlUserId;
+    }
+    return localStorage.getItem('voice_spec_user_id');
+  });
   const [currentMeetingId, setCurrentMeetingId] = useState<number | null>(null);
   // view state: 'dashboard' or 'settings' (defaults to dashboard)
   const [view, setView] = useState<ViewState>('dashboard');
-
-  useEffect(() => {
-    // 1. Check if user_id is in the URL (returning from GitHub Login)
-    const params = new URLSearchParams(window.location.search);
-    const urlUserId = params.get('user_id');
-
-    if (urlUserId) {
-      localStorage.setItem('voice_spec_user_id', urlUserId);
-      setUserId(urlUserId);
-      window.history.replaceState({}, '', window.location.pathname);
-    } else {
-      // 2. Check storage
-      const storedUserId = localStorage.getItem('voice_spec_user_id');
-      if (storedUserId) {
-        setUserId(storedUserId);
-      }
-    }
-  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('voice_spec_user_id');

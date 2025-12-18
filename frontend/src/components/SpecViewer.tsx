@@ -12,6 +12,12 @@ interface Task {
     description: string;
 }
 
+interface SyncResult {
+    title: string;
+    status: string;
+    issue_url: string;
+}
+
 interface Props {
     meetingId: number;
 }
@@ -30,10 +36,10 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [isPreviewingTasks, setIsPreviewingTasks] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
-    const [syncResult, setSyncResult] = useState<any[] | null>(null);
+    const [syncResult, setSyncResult] = useState<SyncResult[] | null>(null);
 
     // Fetch Spec
-    const fetchSpec = async () => {
+    const fetchSpec = React.useCallback(async () => {
         try {
             const res = await fetch(`http://localhost:8000/meetings/${meetingId}/specification`);
             if (res.ok) {
@@ -48,7 +54,7 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
             console.error(err);
         }
         return false;
-    };
+    }, [meetingId]);
 
     useEffect(() => {
         setSpec(null);
@@ -58,7 +64,7 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
         setIsPreviewingTasks(false);
         setIsEditing(false);
         fetchSpec();
-    }, [meetingId]);
+    }, [meetingId, fetchSpec]);
 
     // Polling effect (only if not editing, to avoid overwriting user work)
     useEffect(() => {
@@ -68,7 +74,7 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
             if (found) clearInterval(interval);
         }, 3000);
         return () => clearInterval(interval);
-    }, [isLoading, isEditing]);
+    }, [isLoading, isEditing, fetchSpec]);
 
     const handleGenerate = async () => {
         setIsLoading(true);
@@ -76,7 +82,7 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
         try {
             const res = await fetch(`http://localhost:8000/meetings/${meetingId}/generate`, { method: 'POST' });
             if (!res.ok) throw new Error("Failed to trigger generation");
-        } catch (err) {
+        } catch {
             setError("Failed to start generation. Ensure backend is running.");
             setIsLoading(false);
         }
@@ -176,7 +182,7 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
             const data = await res.json();
             setSyncResult(data.results);
             setTasks([]);
-        } catch (e) {
+        } catch {
             alert("Sync failed");
         } finally {
             setIsSyncing(false);
@@ -281,7 +287,7 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
                             <div className="alert alert-success">
                                 <h3 className="h6 fw-bold mb-2">Sync Complete!</h3>
                                 <ul className="list-unstyled mb-0 small">
-                                    {syncResult.map((r: any, idx: number) => (
+                                    {syncResult.map((r, idx) => (
                                         <li key={idx}>
                                             {r.title} -
                                             {r.status === "created" ? (
