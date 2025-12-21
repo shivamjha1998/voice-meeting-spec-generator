@@ -1,51 +1,50 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import Dashboard from './components/Dashboard';
-import MeetingMonitor from './components/MeetingMonitor';
-import SpecViewer from './components/SpecViewer';
 import Settings from './components/Settings';
+import ProjectDetails from './components/ProjectDetails';
+import MeetingPage from './components/MeetingPage';
 
-type ViewState = 'dashboard' | 'settings';
-
-function App() {
+// Wrapper component to use hooks like useNavigate inside Router context
+function AppContent() {
   const [userId, setUserId] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search);
     const urlUserId = params.get('user_id');
     if (urlUserId) {
-      localStorage.setItem('voice_spec_user_id', urlUserId);
-      window.history.replaceState({}, '', window.location.pathname);
       return urlUserId;
     }
     return localStorage.getItem('voice_spec_user_id');
   });
-  const [currentMeetingId, setCurrentMeetingId] = useState<number | null>(null);
-  // view state: 'dashboard' or 'settings' (defaults to dashboard)
-  const [view, setView] = useState<ViewState>('dashboard');
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlUserId = params.get('user_id');
+
+    if (urlUserId) {
+      localStorage.setItem('voice_spec_user_id', urlUserId);
+      window.history.replaceState({}, '', '/'); // Clear URL param
+    }
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('voice_spec_user_id');
     setUserId(null);
+    navigate('/'); // Redirect to home/login
   };
 
   const handleLogin = () => {
     window.location.href = "http://localhost:8000/auth/github/login";
   };
 
-  // --- Login Screen ---
   if (!userId) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white shadow-lg rounded-xl p-8 text-center">
-          <h1 className="text-3xl font-bold text-blue-600 mb-4">Voice Spec Generator</h1>
-          <p className="text-gray-600 mb-8">
-            Automatically generate project specifications from your voice meetings using AI.
-          </p>
-          <button
-            onClick={handleLogin}
-            className="w-full bg-gray-900 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-800 transition flex items-center justify-center gap-2"
-          >
-            <svg height="20" width="20" viewBox="0 0 16 16" fill="currentColor" style={{ marginRight: '10px' }}>
-              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-            </svg>
+      <div className="d-flex vh-100 align-items-center justify-content-center bg-light">
+        <div className="card shadow p-5 text-center" style={{ maxWidth: '450px' }}>
+          <h1 className="text-primary fw-bold mb-3">Voice Spec Gen</h1>
+          <p className="text-muted mb-4">AI-powered project specifications from your voice meetings.</p>
+          <button onClick={handleLogin} className="btn btn-dark w-100 py-2 fw-bold">
             Sign in with GitHub
           </button>
         </div>
@@ -53,73 +52,39 @@ function App() {
     );
   }
 
-  // --- Main App Screen ---
   return (
-    <div className="d-flex flex-column min-vh-100 bg-light">
-      <nav className="navbar navbar-expand-lg navbar-light bg-white border-bottom px-4">
-        <div className="container-fluid d-flex justify-content-between align-items-center">
-          <div className="flex items-center gap-6">
-            <h1 className="text-xl font-bold text-blue-600 cursor-pointer" onClick={() => { setView('dashboard'); setCurrentMeetingId(null); }}>
-              Voice Meeting Spec Generator
-            </h1>
-            {/* Navigation Links */}
-            <div className="hidden md:flex gap-4 text-sm font-medium">
-              <button
-                onClick={() => { setView('dashboard'); setCurrentMeetingId(null); }}
-                className={`${view === 'dashboard' && !currentMeetingId ? 'btn btn-primary mx-2' : 'btn btn-outline-primary mx-2'}`}
-              >
-                Dashboard
-              </button>
-              <button
-                onClick={() => { setView('settings'); setCurrentMeetingId(null); }}
-                className={`${view === 'settings' ? 'btn btn-primary mx-2' : 'btn btn-outline-primary mx-2'}`}
-              >
-                Settings
-              </button>
-            </div>
-          </div>
+    <div className="d-flex flex-column vh-100 bg-light">
+      <nav className="navbar navbar-expand navbar-white bg-white border-bottom px-4 flex-shrink-0">
+        <Link to="/" className="navbar-brand fw-bold text-primary">Voice Spec Gen</Link>
 
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-500 hidden sm:inline">User ID: {userId}</span>
-            <button
-              onClick={handleLogout}
-              className="btn btn-danger mx-2"
-            >
-              Logout
-            </button>
-          </div>
+        <div className="navbar-nav me-auto">
+          <Link to="/" className={`nav-link ${location.pathname === '/' ? 'active fw-bold' : ''}`}>Dashboard</Link>
+          <Link to="/settings" className={`nav-link ${location.pathname === '/settings' ? 'active fw-bold' : ''}`}>Settings</Link>
+        </div>
+
+        <div className="d-flex align-items-center gap-3">
+          <span className="badge bg-secondary fw-normal px-3 py-2">User: {userId}</span>
+          <button onClick={handleLogout} className="btn btn-outline-danger btn-sm">Logout</button>
         </div>
       </nav>
 
-      <main className="container-fluid px-4 mt-4 flex-grow-1">
-        {currentMeetingId ? (
-          <div>
-            <button
-              onClick={() => setCurrentMeetingId(null)}
-              className="btn btn-primary m-2"
-            >
-              &larr; Back to Dashboard
-            </button>
-            <div className="row g-4">
-              <div className="col-12">
-                <MeetingMonitor meetingId={currentMeetingId} />
-              </div>
-              <div className="col-12">
-                <SpecViewer meetingId={currentMeetingId} />
-              </div>
-            </div>
-          </div>
-        ) : view === 'settings' ? (
-          <Settings />
-        ) : (
-          <Dashboard
-            userId={userId}
-            onSelectMeeting={(id) => setCurrentMeetingId(id)}
-          />
-        )}
+      {/* Main content area - fills remaining space */}
+      <main className="flex-grow-1 overflow-auto">
+        <Routes>
+          <Route path="/" element={<Dashboard userId={userId} />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/projects/:projectId" element={<ProjectDetails />} />
+          <Route path="/meeting/:meetingId" element={<MeetingPage />} />
+        </Routes>
       </main>
     </div>
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
+  );
+}
