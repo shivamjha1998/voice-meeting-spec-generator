@@ -2,8 +2,7 @@ requests
 pyaudio
 openai
 python-dotenv
-selenium
-webdriver-manager
+playwright
+playwright-stealth
 redis
-undetected-chromedriver
 setuptools

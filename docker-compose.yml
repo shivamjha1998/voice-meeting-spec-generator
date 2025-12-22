@@ -45,7 +45,9 @@ services:
       - redis
     environment:
       REDIS_URL: redis://redis:6379/0
-      PULSE_SERVER: unix:/run/user/0/pulse/native
+      no_proxy: localhost,127.0.0.1
+      PYTHONUNBUFFERED: '1'
+      DISPLAY: :99
     command: python -m backend.bot.main
     volumes:
       - .:/app

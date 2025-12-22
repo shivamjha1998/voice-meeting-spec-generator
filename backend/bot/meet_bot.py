@@ -4,137 +4,159 @@ import os
 import redis
 import json
 import base64
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
-from .recorder import AudioRecorder
+import random
+from playwright.sync_api import sync_playwright
+from playwright_stealth import stealth_sync
+from backend.bot.recorder import AudioRecorder
 
 class GoogleMeetBot:
     def __init__(self, meeting_id=1):
-        self.driver = None
-        self.is_connected = False
-        self.recorder = AudioRecorder(filename="meet_meeting.wav")
-        self.redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
         self.meeting_id = meeting_id
+        self.playwright = None
+        self.context = None
+        self.page = None
+        self.is_connected = False
+        self.recorder = AudioRecorder(filename=f"meet_{meeting_id}.wav")
+        self.redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+        
+        # Path for browser profile to persist login/cookies
+        self.user_data_dir = os.path.join(os.getcwd(), "google_profile")
+
+    def _human_delay(self, min_sec=1, max_sec=3):
+        """Simulates human-like waiting."""
+        time.sleep(random.uniform(min_sec, max_sec))
 
     def join_meeting(self, meeting_url: str):
-        """
-        Joins a Google Meet meeting using undetected-chromedriver to avoid bot detection.
-        """
-        import undetected_chromedriver as uc
-        print(f"🤖 Bot attempting to join Google Meet: {meeting_url}")
+        print(f"🤖 Bot starting with persistent profile: {self.user_data_dir}")
         
-        # 1. Setup Chrome Options
-        options = uc.ChromeOptions()
-        # Allow microphone/camera permissions automatically (needed for the site to load properly)
-        options.add_argument("--use-fake-ui-for-media-stream")
-        options.add_argument("--disable-notifications")
-        options.add_argument("--autoplay-policy=no-user-gesture-required")
-        # Default to non-headless for now as headless is easier to detect
-        # options.add_argument("--headless") 
+        self.playwright = sync_playwright().start()
+        
+        # Launch with persistent context to avoid being flagged as a 'fresh' bot
+        self.context = self.playwright.chromium.launch_persistent_context(
+            user_data_dir=self.user_data_dir,
+            headless=False, # Use False + Xvfb on servers
+            args=[
+                "--use-fake-ui-for-media-stream", 
+                "--use-fake-device-for-media-stream", # Spoofs a physical camera/mic
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-infobars",
+                "--window-position=0,0",
+                "--window-size=1280,720",
+            ],
+            ignore_default_args=["--enable-automation"],
+            permissions=["microphone", "camera"],
+            viewport={"width": 1280, "height": 720}
+        )
+        
+        self.page = self.context.pages[0]
+        stealth_sync(self.page) # Apply advanced evasion
 
         try:
-            self.driver = uc.Chrome(options=options, version_main=143)
-            
-            # 2. Go to the URL
-            self.driver.get(meeting_url)
-            
-            # 3. Handle Pre-Join Screen (Turn off Mic/Cam)
-            try:
-                body = WebDriverWait(self.driver, 20).until(
-                    EC.presence_of_element_located((By.TAG_NAME, "body"))
-                )
-                time.sleep(3)
-                body.send_keys(Keys.CONTROL, 'd')
-                time.sleep(0.5)
-                body.send_keys(Keys.CONTROL, 'e')
-                print("Possibly muted mic/cam using shortcuts.")
-            except Exception as e:
-                print(f"⚠️ Could not use shortcuts to mute: {e}")
+            self.page.goto(meeting_url, wait_until="networkidle")
+            self._human_delay(2, 4)
 
-            # 3.5 Handle 'What's your name?' input
+            # 1. Handle Mic/Camera Muting (Keyboard shortcuts are most reliable)
             try:
-                name_input = WebDriverWait(self.driver, 5).until(
-                     EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Your name']"))
-                )
-                if name_input:
-                    name_input.clear()
-                    name_input.send_keys("AI Assistant Bot")
+                self.page.keyboard.press("Control+d") 
+                self._human_delay(0.5, 1)
+                self.page.keyboard.press("Control+e")
+                print("✅ Mic and Camera muted via shortcuts.")
+            except Exception as e:
+                print(f"⚠️ Mute shortcuts failed: {e}")
+
+            # 2. Handle Name Input (Only if not logged in)
+            try:
+                name_field = self.page.locator("input[aria-label='Your name'], input[placeholder='Your name']")
+                if name_field.is_visible(timeout=3000):
+                    name_field.fill("AI Assistant")
+                    self._human_delay(1, 2)
+                    print("✅ Entered display name.")
             except:
-                print("Name input not found or not required.")
+                print("ℹ️ Skipping name input (perhaps already logged in).")
 
-            # 4. Click 'Join now' or 'Ask to join'
-            try:
-                # Find the button first to check its text
-                join_button = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.XPATH, "//span[contains(text(), 'Join now') or contains(text(), 'Ask to join')]/ancestor::button"))
-                )
-                button_text = join_button.text
-                print(f"🖱️ Found Join Button. Text: '{button_text}'")
-                join_button.click()
-                print(f"✅ Clicked '{button_text}'")
-            except Exception as e:
-                print(f"❌ Could not find/click Join button. You may need to click it manually. Error: {e}")
+            # 3. Join Logic
+            # Google Meet uses different buttons: 'Join now', 'Ask to join', or 'Rejoin'
+            join_selectors = [
+                "button:has-text('Join now')",
+                "button:has-text('Ask to join')",
+                "button:has-text('Rejoin')"
+            ]
+            
+            joined = False
+            for selector in join_selectors:
+                btn = self.page.locator(selector)
+                if btn.is_visible(timeout=5000):
+                    btn.click()
+                    print(f"✅ Clicked: {selector}")
+                    joined = True
+                    break
+            
+            if not joined:
+                # Backup: click the first primary button that looks like a join button
+                self.page.locator("button[jsname='Q67bS']").click(timeout=5000)
+                print("✅ Clicked primary action button (backup).")
 
-            # 5. Wait to ensure we are in
-            time.sleep(5)
+            # 4. Verify Entry & Anti-Idle Loop
+            self.page.wait_for_selector('button[aria-label*="Leave call"]', timeout=45000)
             self.is_connected = True
-            print("✅ Bot successfully loaded Google Meet.")
-            pass
+            print("✅ Successfully inside the meeting.")
+            
+            # Start background maintenance thread
+            threading.Thread(target=self._maintain_presence, daemon=True).start()
 
         except Exception as e:
-            print(f"❌ Failed to join Google Meet: {e}")
+            print(f"❌ Critical Join Error: {e}")
+            self.page.screenshot(path="error_state.png")
             self.leave_meeting()
 
+    def _maintain_presence(self):
+        """Prevents the bot from being kicked for inactivity/idleness."""
+        while self.is_connected:
+            try:
+                # Randomly move the mouse to simulate activity
+                x, y = random.randint(100, 500), random.randint(100, 500)
+                self.page.mouse.move(x, y)
+                
+                # Close any "Are you still there?" popups if they appear
+                popup_btn = self.page.locator("button:has-text('OK'), button:has-text('Yes')")
+                if popup_btn.is_visible(timeout=500):
+                    popup_btn.click()
+                    print("🔘 Dismissed an idle popup.")
+                
+                time.sleep(random.randint(30, 60))
+            except:
+                break
+
     def start_audio_stream(self):
-        """
-        Starts recording system audio and pushes chunks to Redis.
-        """
         if not self.is_connected:
-            print("⚠️ Warning: Bot not connected to Meet, but starting mic recording anyway.")
-        
-        print("🎙️ Starting Audio Stream (Microphone)...")
+            print("⚠️ Cannot start audio: Not connected.")
+            return
+            
+        print("🎙️ Starting audio capture...")
         self.recorder.start_recording()
-        
-        # Start the background thread to push audio to Redis
         threading.Thread(target=self._consume_stream, daemon=True).start()
 
-    def leave_meeting(self):
-        print("👋 Bot leaving meeting...")
-        self.is_connected = False
-        try:
-            self.recorder.stop_recording()
-        except:
-            pass
-            
-        if self.driver:
-            try:
-                self.driver.quit()
-            except:
-                pass
-            self.driver = None
-
     def _consume_stream(self):
-        """
-        Consumes audio from recorder and pushes to Redis queue 'meeting_audio_queue'.
-        This matches the Transcription service's listener.
-        """
-        # Create a new Redis connection for this thread
         r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
-        print("VX Stream publisher started")
-        
         for chunk in self.recorder.stream_audio():
+            if not self.is_connected: break
             if chunk:
-                # Prepare the message payload
-                message = {
+                msg = {
                     "meeting_id": self.meeting_id,
                     "audio_data": base64.b64encode(chunk).decode('utf-8'),
                     "timestamp": time.time()
                 }
-                # Push to the SAME queue name the Transcription service is listening to
-                r.rpush("meeting_audio_queue", json.dumps(message))
+                r.rpush("meeting_audio_queue", json.dumps(msg))
+
+    def leave_meeting(self):
+        print("👋 Cleaning up and leaving...")
+        self.is_connected = False
+        try: self.recorder.stop_recording()
+        except: pass
+            
+        if self.context:
+            self.context.close()
+        if self.playwright:
+            self.playwright.stop()
+        print("🛑 Shutdown Complete.")

@@ -13,6 +13,8 @@ class AudioRecorder:
         self.format = format
         self.channels = channels
         self.rate = rate
+        self.channels = channels
+        self.rate = rate
         self.p = pyaudio.PyAudio()
         self.is_recording = False
         self.frames = []

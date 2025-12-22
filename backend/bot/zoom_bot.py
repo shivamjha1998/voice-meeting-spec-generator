@@ -4,174 +4,117 @@ import os
 import redis
 import json
 import base64
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
-from .recorder import AudioRecorder
+from playwright.sync_api import sync_playwright
+from backend.bot.recorder import AudioRecorder
 
 class ZoomBot:
     def __init__(self, meeting_id=1):
-        self.driver = None
-        self.is_connected = False
-        self.recorder = AudioRecorder(filename="zoom_meeting.wav")
-        self.redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
         self.meeting_id = meeting_id
+        self.browser = None
+        self.context = None
+        self.page = None
+        self.is_connected = False
+        self.recorder = AudioRecorder(filename=f"zoom_{meeting_id}.wav")
+        self.redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
 
     def join_meeting(self, meeting_url: str):
         """
-        Joins a Zoom meeting using undetected-chromedriver.
+        Joins a Zoom meeting using Playwright.
         """
-        import undetected_chromedriver as uc
-        from selenium.webdriver.common.by import By
-        from selenium.webdriver.support.ui import WebDriverWait
-        from selenium.webdriver.support import expected_conditions as EC
+        print(f"🤖 Bot (Playwright) joining: {meeting_url}")
         
-        print(f"🤖 Bot attempting to join Zoom: {meeting_url}")
+        # Convert to Web Client URL if needed
+        if "/j/" in meeting_url:
+            meeting_url = meeting_url.replace("/j/", "/wc/join/")
         
-        # Transform URL to Web Client (WC) format to bypass app prompts
-        import re
-        # Regex to capture domain, meeting id, and existing query params
-        # Handles /j/ (join) and /s/ (start) links
-        pattern = r"(https?://.*?zoom\.us)/[js]/(\d+)(.*)"
-        match = re.search(pattern, meeting_url)
-        if match:
-             base_url, meeting_id, rest = match.groups()
-             # 'rest' contains ?pwd=... or similar
-             # Construct WC url
-             wc_url = f"{base_url}/wc/{meeting_id}/join{rest}"
-             print(f"🔄 Converted to Web Client URL: {wc_url}")
-             meeting_url = wc_url
-        else:
-             print("⚠️ URL did not match standard Zoom pattern, using as-is.")
-
-        # Setup Chrome Options
-        options = uc.ChromeOptions()
-        options.add_argument("--use-fake-ui-for-media-stream")
-        options.add_argument("--disable-notifications")
-        options.add_argument("--autoplay-policy=no-user-gesture-required")
-
+        self.playwright = sync_playwright().start()
+        
+        # Launch Browser (Chromium)
+        # We run 'headed' because we have Xvfb. This avoids detection better than headless.
+        self.browser = self.playwright.chromium.launch(
+            headless=False, 
+            args=[
+                "--use-fake-ui-for-media-stream",  # Auto-allow Mic/Cam
+                "--autoplay-policy=no-user-gesture-required"
+            ]
+        )
+        
+        # Create Context with Permissions
+        self.context = self.browser.new_context(
+            permissions=["microphone"],
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+        
+        self.page = self.context.new_page()
+        
         try:
-            # Initialize Driver
-            self.driver = uc.Chrome(options=options, version_main=143)
+            self.page.goto(meeting_url)
             
-            # 1. Go to URL (Now directly to Web Client)
-            self.driver.get(meeting_url)
-            
-            # 1.5 Handle Cookie Popup (if present)
+            # 1. Handle Cookie/Privacy Popups
             try:
-                cookie_btn = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.XPATH, "//button[@id='onetrust-accept-btn-handler' or contains(text(), 'Agree') or contains(text(), 'Accept') or contains(@class, 'osano-cm-accept-all')]"))
-                )
-                cookie_btn.click()
-                print("✅ Accepted Cookies")
-            except:
-                print("No cookie popup found (or timed out).")
-
-            # 2. Handle "Your Name" Input
-            try:
-                selectors = [
-                    "//input[contains(@id, 'name')]",
-                    "//input[@id='inputname']",
-                    "//input[@placeholder='Your Name']"
-                ]
-                
-                name_input = None
-                for selector in selectors:
-                    try:
-                        name_input = WebDriverWait(self.driver, 5).until(
-                            EC.presence_of_element_located((By.XPATH, selector))
-                        )
-                        if name_input:
-                            break
-                    except:
-                        continue
-                
-                if not name_input:
-                    # Final try with longer wait on the most common one
-                    name_input = WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located((By.XPATH, "//input[@id='inputname']"))
-                    )
-
-                name_input.clear()
-                name_input.send_keys("AI Assistant Bot")
-                
-                # Check for and Click Join
-                join_btn = WebDriverWait(self.driver, 5).until(
-                    EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Join') and not(@disabled)]"))
-                )
-                join_btn.click()
-                
-            except Exception as e:
-                print(f"⚠️ Name input not found or not required. Saving screenshot to 'zoom_debug.png'. Error: {e}")
-                self.driver.save_screenshot("zoom_debug.png")
-
-            # 3. Handle "Agree" to Terms
-            try:
-                agree_btn = WebDriverWait(self.driver, 5).until(
-                    EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Agree') or contains(text(), 'I Agree')]"))
-                )
-                agree_btn.click()
+                self.page.get_by_role("button", name="Agree").click(timeout=3000)
             except:
                 pass
-                
-            # 4. Handle "Join with Computer Audio"
+
+            # 2. Enter Name
+            # Playwright selectors are robust. We look for the placeholder.
+            name_input = self.page.get_by_placeholder("Your Name")
+            if name_input.count() > 0:
+                name_input.fill("AI Assistant")
+                # Click Join
+                self.page.get_by_role("button", name="Join").click()
+
+            # 3. Handle 'Join Audio by Computer'
+            # Zoom often shows a preview; we wait for the Join Audio button
+            join_audio_btn = self.page.locator("button:has-text('Join Audio by Computer')")
             try:
-                join_audio_btn = WebDriverWait(self.driver, 15).until(
-                     EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Join Audio by Computer') or contains(text(), 'Join with Computer Audio')]"))
-                )
+                join_audio_btn.wait_for(timeout=15000)
                 join_audio_btn.click()
+                print("✅ Clicked 'Join Audio by Computer'")
             except:
-                print("⚠️ 'Join Audio' button not found")
+                print("⚠️ 'Join Audio' button not found (might be auto-joined)")
 
             self.is_connected = True
-            print("✅ Bot successfully loaded Zoom Web Client.")
+            print("✅ Bot Successfully Connected to Zoom")
 
-            
         except Exception as e:
-            print(f"❌ Failed to join Zoom: {e}")
+            print(f"❌ Failed to join: {e}")
+            # Take a screenshot for debugging in Docker
+            self.page.screenshot(path="error_screenshot.png")
             self.leave_meeting()
 
     def start_audio_stream(self):
-        """
-        Starts recording system audio (Microphone) as a proxy for meeting audio.
-        """
+        """Starts capturing system audio."""
         if not self.is_connected:
-            print("⚠️ Warning: Bot not connected to Zoom, but starting mic recording anyway.")
-        
-        print("🎙️ Starting Audio Stream (Microphone)...")
+            return
+            
+        print("🎙️ Bot listening...")
         self.recorder.start_recording()
         
-        # In a real app, we would consume this generator and send to Whisper
-        # For now, we run it in a thread to verify it works
+        # Start streaming thread
         threading.Thread(target=self._consume_stream, daemon=True).start()
 
-
     def leave_meeting(self):
-        print("mb Bot leaving meeting...")
         self.is_connected = False
-        self.recorder.stop_recording()
-        if self.driver:
-            self.driver.quit()
-            self.driver = None
+        try:
+            self.recorder.stop_recording()
+        except:
+            pass
+            
+        if self.browser:
+            self.browser.close()
+        if hasattr(self, 'playwright'):
+            self.playwright.stop()
+        print("👋 Bot disconnected.")
 
     def _consume_stream(self):
-        """Consumes audio from recorder and pushes to Redis."""
-        import redis
-        import json
-        import base64
-        
-        # Connect to Redis inside the process
         r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
-        print("VX Stream publisher started")
         
         for chunk in self.recorder.stream_audio():
             if chunk:
-                # Prepare the message payload
-                message = {
+                msg = {
                     "meeting_id": self.meeting_id,
                     "audio_data": base64.b64encode(chunk).decode('utf-8'),
                     "timestamp": time.time()
                 }
-                r.rpush("meeting_audio_queue", json.dumps(message))
+                r.rpush("meeting_audio_queue", json.dumps(msg))
