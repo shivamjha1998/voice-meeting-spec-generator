@@ -45,6 +45,7 @@ services:
       - redis
     environment:
       REDIS_URL: redis://redis:6379/0
+      PULSE_SERVER: unix:/run/user/0/pulse/native
     command: python -m backend.bot.main
     volumes:
       - .:/app
@@ -60,6 +61,7 @@ services:
     environment:
       DATABASE_URL: postgresql://user:password@db:5432/voice_meeting_db
       REDIS_URL: redis://redis:6379/0
+      PULSE_SERVER: unix:/run/user/0/pulse/native
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY}
     command: python -m backend.transcription.main
@@ -92,6 +94,7 @@ services:
       - redis
     environment:
       REDIS_URL: redis://redis:6379/0
+      PULSE_SERVER: unix:/run/user/0/pulse/native
     command: python -m backend.tts.main
     volumes:
       - .:/app
