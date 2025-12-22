@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Card, Button, Form, Badge, Alert, Spinner } from 'react-bootstrap';
+import { Card, Button, Form, Badge, Spinner } from 'react-bootstrap';
 
 interface Specification {
     id: number;
@@ -10,36 +10,27 @@ interface Specification {
     created_at: string;
 }
 
-interface Task {
-    title: string;
-    description: string;
-}
 
-interface SyncResult {
-    title: string;
-    status: string;
-    issue_url: string;
-}
 
 interface Props {
     meetingId: number;
+    onPreviewTasks: () => void;
+    isPreviewingTasks: boolean;
+    showReviewButton: boolean;
 }
 
-const SpecViewer: React.FC<Props> = ({ meetingId }) => {
+const SpecViewer: React.FC<Props> = ({ meetingId, onPreviewTasks, isPreviewingTasks, showReviewButton }) => {
     const [spec, setSpec] = useState<Specification | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const lastVersionRef = useRef<string | null>(null);
 
     // Edit Mode State
     const [isEditing, setIsEditing] = useState(false);
     const [editContent, setEditContent] = useState("");
     const [isSaving, setIsSaving] = useState(false);
 
-    // Task Management State
-    const [tasks, setTasks] = useState<Task[]>([]);
-    const [isPreviewingTasks, setIsPreviewingTasks] = useState(false);
-    const [isSyncing, setIsSyncing] = useState(false);
-    const [syncResult, setSyncResult] = useState<SyncResult[] | null>(null);
+
 
     // Fetch Spec (Wrapped in useCallback as per your code)
     const fetchSpec = React.useCallback(async () => {
@@ -47,7 +38,14 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
             const res = await fetch(`http://localhost:8000/meetings/${meetingId}/specification`);
             if (res.ok) {
                 const data = await res.json();
+
+                // If we are waiting for an update, check timestamp to ensure we have the new version
+                if (lastVersionRef.current && data.created_at === lastVersionRef.current) {
+                    return false;
+                }
+
                 setSpec(data);
+                lastVersionRef.current = null;
                 setIsLoading(false);
                 return true;
             } else {
@@ -63,9 +61,6 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
     useEffect(() => {
         setSpec(null);
         setError(null);
-        setTasks([]);
-        setSyncResult(null);
-        setIsPreviewingTasks(false);
         setIsEditing(false);
         fetchSpec();
     }, [meetingId, fetchSpec]);
@@ -81,6 +76,7 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
     }, [isLoading, isEditing, fetchSpec]);
 
     const handleGenerate = async () => {
+        if (spec) lastVersionRef.current = spec.created_at;
         setIsLoading(true);
         setError(null);
         try {
@@ -140,54 +136,6 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
         a.click();
     };
 
-    // Task Logic
-    const handlePreviewTasks = async () => {
-        setIsPreviewingTasks(true);
-        try {
-            const res = await fetch(`http://localhost:8000/meetings/${meetingId}/tasks/preview`);
-            if (res.ok) {
-                const data = await res.json();
-                setTasks(data);
-            } else {
-                alert("Failed to load task preview");
-            }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setIsPreviewingTasks(false);
-        }
-    };
-
-    const handleDeleteTask = (index: number) => {
-        const newTasks = [...tasks];
-        newTasks.splice(index, 1);
-        setTasks(newTasks);
-    };
-
-    const handleTaskChange = (index: number, field: keyof Task, value: string) => {
-        const newTasks = [...tasks];
-        newTasks[index] = { ...newTasks[index], [field]: value };
-        setTasks(newTasks);
-    };
-
-    const handleSyncToGitHub = async () => {
-        if (!confirm(`Are you sure you want to create ${tasks.length} issues on GitHub?`)) return;
-        setIsSyncing(true);
-        try {
-            const res = await fetch(`http://localhost:8000/meetings/${meetingId}/tasks/sync`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(tasks)
-            });
-            const data = await res.json();
-            setSyncResult(data.results);
-            setTasks([]);
-        } catch {
-            alert("Sync failed");
-        } finally {
-            setIsSyncing(false);
-        }
-    };
 
     return (
         <div className="d-flex flex-column h-100 gap-3">
@@ -266,8 +214,8 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
                                         <Button variant="success" size="sm" onClick={handleExport}>
                                             Export MD
                                         </Button>
-                                        {tasks.length === 0 && !syncResult && (
-                                            <Button variant="dark" size="sm" className="ms-auto" onClick={handlePreviewTasks} disabled={isPreviewingTasks}>
+                                        {showReviewButton && (
+                                            <Button variant="dark" size="sm" className="ms-auto" onClick={onPreviewTasks} disabled={isPreviewingTasks}>
                                                 {isPreviewingTasks ? "Extracting..." : "Review Tasks"}
                                             </Button>
                                         )}
@@ -279,64 +227,7 @@ const SpecViewer: React.FC<Props> = ({ meetingId }) => {
                 </Card.Footer>
             </Card>
 
-            {/* Task Review Section (Collapsible) */}
-            {(tasks.length > 0 || syncResult) && (
-                <Card className="shadow-sm border-0 flex-shrink-0 d-flex flex-column overflow-hidden" style={{ height: '300px' }}>
-                    <Card.Header className="bg-light border-bottom py-2 px-3 d-flex justify-content-between align-items-center">
-                        <h6 className="mb-0 fw-bold text-success">✅ Task Review</h6>
-                        <Button variant="link" size="sm" className="text-muted text-decoration-none p-0" onClick={() => { setTasks([]); setSyncResult(null); }}>✕</Button>
-                    </Card.Header>
 
-                    <Card.Body className="overflow-auto p-3">
-                        {syncResult ? (
-                            <Alert variant="success">
-                                <Alert.Heading className="h6">Sync Complete!</Alert.Heading>
-                                <ul className="mb-0 ps-3 small">
-                                    {syncResult.map((r, idx) => (
-                                        <li key={idx}>
-                                            {r.title}
-                                            {r.status === "created" && <a href={r.issue_url} target="_blank" rel="noreferrer" className="ms-2 fw-bold">View Issue</a>}
-                                        </li>
-                                    ))}
-                                </ul>
-                            </Alert>
-                        ) : (
-                            tasks.map((task, idx) => (
-                                <Card key={idx} className="mb-2 border bg-light">
-                                    <Card.Body className="p-2 d-flex gap-3 align-items-start">
-                                        <div className="flex-grow-1">
-                                            <Form.Control
-                                                type="text"
-                                                value={task.title}
-                                                onChange={(e) => handleTaskChange(idx, 'title', e.target.value)}
-                                                className="mb-2 fw-bold form-control-sm border-0 bg-transparent px-0 shadow-none"
-                                                placeholder="Task Title"
-                                            />
-                                            <Form.Control
-                                                as="textarea"
-                                                rows={2}
-                                                value={task.description}
-                                                onChange={(e) => handleTaskChange(idx, 'description', e.target.value)}
-                                                className="form-control-sm"
-                                                placeholder="Description..."
-                                            />
-                                        </div>
-                                        <Button variant="link" className="text-muted p-0" onClick={() => handleDeleteTask(idx)}>✕</Button>
-                                    </Card.Body>
-                                </Card>
-                            ))
-                        )}
-                    </Card.Body>
-
-                    {!syncResult && (
-                        <Card.Footer className="bg-white p-2 text-end">
-                            <Button variant="dark" size="sm" onClick={handleSyncToGitHub} disabled={isSyncing}>
-                                {isSyncing ? "Syncing..." : `Sync ${tasks.length} Issues to GitHub`}
-                            </Button>
-                        </Card.Footer>
-                    )}
-                </Card>
-            )}
         </div>
     );
 };

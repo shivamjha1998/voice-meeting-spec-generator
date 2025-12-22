@@ -132,7 +132,7 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId, onMeetingEnd }) => {
                 </div>
             </div>
 
-            <div className="card-body overflow-auto bg-light p-3" style={{ maxHeight: '600px' }}>
+            <div className="card-body overflow-auto bg-light p-3">
                 {transcripts.length === 0 ? (
                     <div className="d-flex justify-content-center align-items-center h-100 text-muted">
                         Waiting for speech...
