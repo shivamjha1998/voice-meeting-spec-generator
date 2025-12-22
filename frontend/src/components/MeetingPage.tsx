@@ -80,7 +80,9 @@ const MeetingPage: React.FC = () => {
 
             {/* Top Section: Monitor & Spec Viewer */}
             <div className="row g-4 flex-grow-1 flex-shrink-0" style={{ minHeight: '0' }}>
-                <div className="col-lg-6 d-flex flex-column">
+                <div className="col-lg-6 d-flex flex-column" style={{
+                    maxHeight: '100vh'
+                }}>
                     <MeetingMonitor meetingId={id} />
                 </div>
                 <div className="col-lg-6 d-flex flex-column" style={{

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Button, Form, Alert } from 'react-bootstrap';
+import { Card, Button, Form, Badge, ListGroup } from 'react-bootstrap';
 
 export interface Task {
     title: string;
@@ -9,7 +9,8 @@ export interface Task {
 export interface SyncResult {
     title: string;
     status: string;
-    issue_url: string;
+    issue_url: string | null;
+    error?: string;
 }
 
 interface Props {
@@ -36,23 +37,38 @@ const TaskReview: React.FC<Props> = ({
     return (
         <Card className="shadow-sm border-0 d-flex flex-column overflow-hidden h-100">
             <Card.Header className="bg-light border-bottom py-2 px-3 d-flex justify-content-between align-items-center">
-                <h6 className="mb-0 fw-bold text-success">✅ Task Review</h6>
+                <h6 className="mb-0 fw-bold text-success">
+                    {syncResult ? "📊 Sync Results" : "✅ Task Review"}
+                </h6>
                 <Button variant="link" size="sm" className="text-muted text-decoration-none p-0" onClick={onClose}>✕</Button>
             </Card.Header>
 
             <Card.Body className="overflow-auto p-3">
                 {syncResult ? (
-                    <Alert variant="success">
-                        <Alert.Heading className="h6">Sync Complete!</Alert.Heading>
-                        <ul className="mb-0 ps-3 small">
-                            {syncResult.map((r, idx) => (
-                                <li key={idx}>
-                                    {r.title}
-                                    {r.status === "created" && <a href={r.issue_url} target="_blank" rel="noreferrer" className="ms-2 fw-bold">View Issue</a>}
-                                </li>
-                            ))}
-                        </ul>
-                    </Alert>
+                    <ListGroup variant="flush">
+                        {syncResult.map((r, idx) => (
+                            <ListGroup.Item key={idx} className="d-flex justify-content-between align-items-center px-0">
+                                <div style={{ maxWidth: '70%' }}>
+                                    <span className="fw-bold d-block text-truncate">{r.title}</span>
+                                    {r.error && <small className="text-danger">{r.error}</small>}
+                                </div>
+                                <div>
+                                    {r.status === "created" ? (
+                                        <a
+                                            href={r.issue_url || "#"}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="btn btn-sm btn-outline-success"
+                                        >
+                                            View Issue ↗
+                                        </a>
+                                    ) : (
+                                        <Badge bg="danger">Failed</Badge>
+                                    )}
+                                </div>
+                            </ListGroup.Item>
+                        ))}
+                    </ListGroup>
                 ) : (
                     <div className="d-flex flex-wrap gap-3">
                         {tasks.map((task, idx) => (
