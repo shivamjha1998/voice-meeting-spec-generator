@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from datetime import datetime
 from backend.common import models
+from backend.common.security import encrypt_value
 from . import schemas
 
 def get_project(db: Session, project_id: int):
@@ -40,11 +41,14 @@ def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
 
 def create_user(db: Session, user: schemas.UserCreate):
+    # Encrypt the token before creating the model
+    encrypted_token = encrypt_value(user.github_token)
+    # Create the user
     db_user = models.User(
         email=user.email,
         username=user.username,
         avatar_url=user.avatar_url,
-        github_token=user.github_token
+        github_token=encrypted_token
     )
     db.add(db_user)
     db.commit()
@@ -54,7 +58,8 @@ def create_user(db: Session, user: schemas.UserCreate):
 def update_user_token(db: Session, user_id: int, new_token: str):
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if user:
-        user.github_token = new_token
+        # Encrypt the new token before updating
+        user.github_token = encrypt_value(new_token)
         db.commit()
         db.refresh(user)
     return user

@@ -10,15 +10,16 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from typing import List
 from dotenv import load_dotenv
+load_dotenv()
+
+from backend.common import models, database
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import WebSocket, WebSocketDisconnect
 from datetime import datetime
 
-from backend.common import models, database
 from backend.api import schemas, crud
 from backend.ai.llm_client import LLMClient
-
-load_dotenv()
+from backend.common.security import decrypt_value
 
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
@@ -252,8 +253,12 @@ def sync_tasks_to_github(
     except:
         raise HTTPException(status_code=400, detail="Invalid GitHub Repo URL")
 
+    decrypted_token = decrypt_value(user.github_token)
+    if not decrypted_token:
+        raise HTTPException(status_code=401, detail="Invalid or missing GitHub token")
+
     headers = {
-        "Authorization": f"token {user.github_token}",
+        "Authorization": f"token {decrypted_token}",
         "Accept": "application/vnd.github.v3+json"
     }
 
@@ -303,8 +308,10 @@ def read_user_repos(user_id: int, db: Session = Depends(database.get_db)):
     if not user or not user.github_token:
         raise HTTPException(status_code=401, detail="User not authorised with GitHub")
 
+    decrypted_token = decrypt_value(user.github_token)
+
     headers = {
-        "Authorization": f"token {user.github_token}",
+        "Authorization": f"token {decrypted_token}",
         "Accept": "application/vnd.github.v3+json"
     }
 
