@@ -17,9 +17,18 @@ interface Props {
     onPreviewTasks: () => void;
     isPreviewingTasks: boolean;
     showReviewButton: boolean;
+    autoGenerateTrigger?: boolean;
+    onGenerationComplete?: () => void;
 }
 
-const SpecViewer: React.FC<Props> = ({ meetingId, onPreviewTasks, isPreviewingTasks, showReviewButton }) => {
+const SpecViewer: React.FC<Props> = ({
+    meetingId,
+    onPreviewTasks,
+    isPreviewingTasks,
+    showReviewButton,
+    autoGenerateTrigger,
+    onGenerationComplete
+}) => {
     const [spec, setSpec] = useState<Specification | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -65,15 +74,27 @@ const SpecViewer: React.FC<Props> = ({ meetingId, onPreviewTasks, isPreviewingTa
         fetchSpec();
     }, [meetingId, fetchSpec]);
 
+    // Handle external auto-generation trigger (e.g. from Meeting End)
+    useEffect(() => {
+        if (autoGenerateTrigger) {
+            if (spec) lastVersionRef.current = spec.created_at;
+            setIsLoading(true);
+            setError(null);
+        }
+    }, [autoGenerateTrigger, spec]);
+
     // Polling effect
     useEffect(() => {
         if (!isLoading || isEditing) return;
         const interval = setInterval(async () => {
             const found = await fetchSpec();
-            if (found) clearInterval(interval);
+            if (found) {
+                clearInterval(interval);
+                if (onGenerationComplete) onGenerationComplete();
+            }
         }, 3000);
         return () => clearInterval(interval);
-    }, [isLoading, isEditing, fetchSpec]);
+    }, [isLoading, isEditing, fetchSpec, onGenerationComplete]);
 
     const handleGenerate = async () => {
         if (spec) lastVersionRef.current = spec.created_at;

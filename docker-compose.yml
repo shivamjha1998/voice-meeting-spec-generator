@@ -82,7 +82,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       HUGGING_FACE_KEY: ${HUGGING_FACE_KEY}
       PYTHONUNBUFFERED: '1'
-    command: python -m backend.ai.main
+    command: celery -A backend.celery_app worker --loglevel=info
     volumes:
       - .:/app
 

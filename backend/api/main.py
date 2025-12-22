@@ -20,6 +20,8 @@ from datetime import datetime
 from backend.api import schemas, crud
 from backend.ai.llm_client import LLMClient
 from backend.common.security import decrypt_value
+from backend.celery_app import celery_app
+from backend.ai.tasks import generate_specification_task
 
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
@@ -161,12 +163,7 @@ def generate_specification(meeting_id: int, db: Session = Depends(database.get_d
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
     
-    try:
-        redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
-        job_data = {"meeting_id": meeting.id, "project_id": meeting.project_id}
-        redis_client.rpush("spec_generation_queue", json.dumps(job_data))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to queue task: {str(e)}")
+    generate_specification_task.delay(meeting.id, meeting.project_id)
 
     return {"status": "queued", "message": "Specification generation started"}
 
@@ -391,17 +388,10 @@ def end_meeting(meeting_id: int, db: Session = Depends(database.get_db)):
     db.commit()
     
     redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
-
-    # 2. Send STOP signal to Bot
-    # We'll use a specific key pattern that the bot checks
     redis_client.set(f"stop_meeting_{meeting_id}", "true")
     
-    # 3. Trigger Spec Generation (Auto-generate)
-    try:
-        job_data = {"meeting_id": meeting.id, "project_id": meeting.project_id}
-        redis_client.rpush("spec_generation_queue", json.dumps(job_data))
-    except Exception as e:
-        print(f"Failed to queue spec generation: {e}")
+    # 2. Trigger Celery Task
+    generate_specification_task.delay(meeting.id, meeting.project_id)
 
     return {"status": "success", "message": "Meeting ended, bot stopped, spec generation started."}
 

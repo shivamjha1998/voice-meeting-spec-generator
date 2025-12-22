@@ -11,3 +11,4 @@ huggingface_hub
 requests
 pytest
 cryptography
+celery

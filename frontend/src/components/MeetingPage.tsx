@@ -13,6 +13,11 @@ const MeetingPage: React.FC = () => {
     const [isPreviewingTasks, setIsPreviewingTasks] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncResult, setSyncResult] = useState<SyncResult[] | null>(null);
+    const [isAutoGenerating, setIsAutoGenerating] = useState(false);
+
+    const handleMeetingEnd = () => {
+        setIsAutoGenerating(true);
+    };
 
     const handlePreviewTasks = async () => {
         setIsPreviewingTasks(true);
@@ -83,7 +88,7 @@ const MeetingPage: React.FC = () => {
                 <div className="col-lg-6 d-flex flex-column" style={{
                     maxHeight: '100vh'
                 }}>
-                    <MeetingMonitor meetingId={id} />
+                    <MeetingMonitor meetingId={id} onMeetingEnd={handleMeetingEnd} />
                 </div>
                 <div className="col-lg-6 d-flex flex-column" style={{
                     maxHeight: '100vh'
@@ -93,7 +98,8 @@ const MeetingPage: React.FC = () => {
                         onPreviewTasks={handlePreviewTasks}
                         isPreviewingTasks={isPreviewingTasks}
                         showReviewButton={!isTaskReviewOpen}
-
+                        autoGenerateTrigger={isAutoGenerating}
+                        onGenerationComplete={() => setIsAutoGenerating(false)}
                     />
                 </div>
             </div>
