@@ -26,6 +26,7 @@ class GoogleMeetBot:
         self.recorder = AudioRecorder(filename=f"meet_{meeting_id}.wav")
         self.redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
         self.user_data_dir = os.path.join(os.getcwd(), "google_profile")
+        self.playback_thread_started = False
 
     def _human_delay(self, min_sec=1, max_sec=3):
         time.sleep(random.uniform(min_sec, max_sec))
@@ -106,7 +107,7 @@ class GoogleMeetBot:
             print("⌛ Waiting for meeting interface...")
             if self._verify_meeting_joined():
                 self.is_connected = True
-                print("✅ Successfully joined the meeting!")
+                self.start_playback_listener()
                 print("✅ Successfully joined the meeting!")
                 threading.Thread(target=self._maintain_presence, daemon=True).start()
             else:
@@ -114,9 +115,6 @@ class GoogleMeetBot:
 
         except Exception as e:
             print(f"❌ Join Error: {e}")
-            print(f"❌ Join Error: {e}")
-            
-
             
             self.leave_meeting()
             raise e
@@ -423,6 +421,36 @@ class GoogleMeetBot:
                     "timestamp": time.time()
                 }
                 r.rpush("meeting_audio_queue", json.dumps(msg))
+
+    def start_playback_listener(self):
+        """Starts a thread to listen for audio playback requests."""
+        if not self.playback_thread_started:
+            self.playback_thread_started = True
+            threading.Thread(target=self._playback_loop, daemon=True).start()
+            print("🔈 Bot playback listener active.")
+
+    def _playback_loop(self):
+        """Monitors Redis for audio files to play back into the meeting."""
+        r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+        
+        while self.is_connected:
+            try:
+                # Blocking pop for this specific meeting's playback
+                item = r.blpop("audio_playback_queue", timeout=3)
+                if item:
+                    _, data_str = item
+                    data = json.loads(data_str)
+                    
+                    # Only play if it belongs to this meeting
+                    if data.get("meeting_id") == self.meeting_id:
+                        file_path = data.get("file_path")
+                        if file_path and os.path.exists(file_path):
+                            # Play using the utility in recorder.py
+                            self.recorder.play_audio(file_path)
+            except Exception as e:
+                print(f"⚠️ Playback Loop Error: {e}")
+                time.sleep(1)
+
 
     def leave_meeting(self):
         self.is_connected = False

@@ -105,3 +105,10 @@ def update_setting(db: Session, setting: schemas.SettingCreate):
         db.commit()
         db.refresh(db_setting)
         return db_setting
+
+def create_audio_file(db: Session, audio_file: schemas.AudioFileCreate):
+    db_audio = models.AudioFile(**audio_file.dict())
+    db.add(db_audio)
+    db.commit()
+    db.refresh(db_audio)
+    return db_audio

@@ -115,3 +115,18 @@ class SettingCreate(SettingBase):
 class Setting(SettingBase):
     class Config:
         from_attributes = True
+
+class AudioFileBase(BaseModel):
+    meeting_id: int
+    file_path: str
+    duration: Optional[int] = None
+
+class AudioFileCreate(AudioFileBase):
+    pass
+
+class AudioFile(AudioFileBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

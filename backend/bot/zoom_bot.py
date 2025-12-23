@@ -1,3 +1,4 @@
+import random
 import time
 import threading
 import os
@@ -5,7 +6,6 @@ import redis
 import json
 import base64
 from playwright.sync_api import sync_playwright
-# Fix stealth import - handle both import styles
 try:
     from playwright_stealth import stealth_sync
 except ImportError:
@@ -24,6 +24,11 @@ class ZoomBot:
         self.recorder = AudioRecorder(filename=f"zoom_{meeting_id}.wav")
         self.redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
         self.user_data_dir = os.path.join(os.getcwd(), "google_profile")
+        self.playback_thread_started = False
+
+    def _human_delay(self, min_sec=1, max_sec=3):
+        """Introduces random delays to simulate human."""
+        time.sleep(random.uniform(min_sec, max_sec))
 
     def join_meeting(self, meeting_url: str):
         """
@@ -75,10 +80,12 @@ class ZoomBot:
         
         try:
             self.page.goto(meeting_url)
+            self._human_delay(2, 4)
             
             # 1. Handle Cookie/Privacy Popups
             try:
                 self.page.get_by_role("button", name="Agree").click(timeout=3000)
+                self._human_delay(0.5, 1.5)
             except:
                 pass
 
@@ -130,6 +137,8 @@ class ZoomBot:
                  except:
                      pass
 
+            self._human_delay(1, 2)
+
             # Click Join Button
             join_btn = self.page.get_by_role("button", name="Join")
             if join_btn.count() > 0 and join_btn.is_visible():
@@ -149,12 +158,15 @@ class ZoomBot:
             try:
                 join_audio_btn.wait_for(timeout=15000)
                 join_audio_btn.click()
+                self.start_playback_listener()
                 print("✅ Clicked 'Join Audio by Computer'")
             except:
                 print("⚠️ 'Join Audio' button not found (might be auto-joined)")
 
             self.is_connected = True
             print("✅ Bot Successfully Connected to Zoom")
+
+            threading.Thread(target=self._maintain_presence, daemon=True).start()
 
         except Exception as e:
             print(f"❌ Failed to join: {e}")
@@ -171,6 +183,47 @@ class ZoomBot:
         
         # Start streaming thread
         threading.Thread(target=self._consume_stream, daemon=True).start()
+
+    def _maintain_presence(self):
+        """Simulates activity to avoid being kicked for inactivity."""
+        while self.is_connected:
+            try:
+                # Random mouse movements
+                x = random.randint(100, 1000)
+                y = random.randint(100, 600)
+                self.page.mouse.move(x, y, steps=random.randint(10, 20))
+                time.sleep(random.randint(30, 60))
+            except:
+                break
+    
+    def start_playback_listener(self):
+        """Starts a thread to listen for audio playback requests."""
+        if not self.playback_thread_started:
+            self.playback_thread_started = True
+            threading.Thread(target=self._playback_loop, daemon=True).start()
+            print("🔈 Bot playback listener active.")
+
+    def _playback_loop(self):
+        """Monitors Redis for audio files to play back into the meeting."""
+        r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+        
+        while self.is_connected:
+            try:
+                # Blocking pop for this specific meeting's playback
+                item = r.blpop("audio_playback_queue", timeout=3)
+                if item:
+                    _, data_str = item
+                    data = json.loads(data_str)
+                    
+                    # Only play if it belongs to this meeting
+                    if data.get("meeting_id") == self.meeting_id:
+                        file_path = data.get("file_path")
+                        if file_path and os.path.exists(file_path):
+                            # Play using the utility in recorder.py
+                            self.recorder.play_audio(file_path)
+            except Exception as e:
+                print(f"⚠️ Playback Loop Error: {e}")
+                time.sleep(1)
 
     def leave_meeting(self):
         self.is_connected = False

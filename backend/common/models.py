@@ -86,3 +86,14 @@ class Setting(Base):
     key = Column(String, primary_key=True, index=True)
     value = Column(String, nullable=False)
     description = Column(String, nullable=True)
+
+class AudioFile(Base):
+    __tablename__ = "audio_files"
+
+    id = Column(Integer, primary_key=True, index=True)
+    meeting_id = Column(Integer, ForeignKey("meetings.id"))
+    file_path = Column(String)
+    duration = Column(Integer, nullable=True) # Duration in seconds
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    meeting = relationship("Meeting")
