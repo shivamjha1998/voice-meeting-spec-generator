@@ -5,17 +5,25 @@ import redis
 import json
 import base64
 from playwright.sync_api import sync_playwright
+# Fix stealth import - handle both import styles
+try:
+    from playwright_stealth import stealth_sync
+except ImportError:
+    stealth_sync = None
+    print("⚠️ playwright-stealth not available")
+
 from backend.bot.recorder import AudioRecorder
 
 class ZoomBot:
     def __init__(self, meeting_id=1):
         self.meeting_id = meeting_id
-        self.browser = None
+        self.playwright = None # Changed from browser to playwright for consistency
         self.context = None
         self.page = None
         self.is_connected = False
         self.recorder = AudioRecorder(filename=f"zoom_{meeting_id}.wav")
         self.redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+        self.user_data_dir = os.path.join(os.getcwd(), "google_profile")
 
     def join_meeting(self, meeting_url: str):
         """
@@ -29,23 +37,41 @@ class ZoomBot:
         
         self.playwright = sync_playwright().start()
         
-        # Launch Browser (Chromium)
-        # We run 'headed' because we have Xvfb. This avoids detection better than headless.
-        self.browser = self.playwright.chromium.launch(
-            headless=False, 
+        user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+
+        # Launch Browser (Chromium) with Persistent Context
+        self.context = self.playwright.chromium.launch_persistent_context(
+            user_data_dir=self.user_data_dir,
+            headless=False,
+            user_agent=user_agent,
             args=[
-                "--use-fake-ui-for-media-stream",  # Auto-allow Mic/Cam
+                "--use-fake-ui-for-media-stream",
+                "--no-sandbox",
+                "--disable-infobars",
+                "--disable-blink-features=AutomationControlled",
                 "--autoplay-policy=no-user-gesture-required"
-            ]
+            ],
+            ignore_default_args=["--enable-automation"],
+            permissions=["microphone", "camera"],
+            viewport={"width": 1280, "height": 720}
         )
         
-        # Create Context with Permissions
-        self.context = self.browser.new_context(
-            permissions=["microphone"],
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
-        
-        self.page = self.context.new_page()
+        self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
+
+        # Apply stealth if available
+        if stealth_sync:
+            try:
+                stealth_sync(self.page)
+                print("✅ Stealth applied successfully")
+            except Exception as e:
+                print(f"⚠️ Stealth error (non-critical): {e}")
+
+        # Override webdriver property
+        self.page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+        """)
         
         try:
             self.page.goto(meeting_url)
@@ -57,12 +83,65 @@ class ZoomBot:
                 pass
 
             # 2. Enter Name
-            # Playwright selectors are robust. We look for the placeholder.
-            name_input = self.page.get_by_placeholder("Your Name")
-            if name_input.count() > 0:
-                name_input.fill("AI Assistant")
-                # Click Join
-                self.page.get_by_role("button", name="Join").click()
+            # Try multiple selectors for the name field
+            print("📝 Filling name field...")
+            name_filled = False
+            name_patterns = ["Your Name", "Enter your name", "Name", "inputname"]
+            
+            for pattern in name_patterns:
+                try:
+                    # Try placeholder
+                    inp = self.page.get_by_placeholder(pattern)
+                    if inp.count() > 0 and inp.is_visible():
+                        inp.fill("AI Assistant")
+                        name_filled = True
+                        print(f"✅ Filled name via placeholder: {pattern}")
+                        break
+                    
+                    # Try label
+                    inp = self.page.get_by_label(pattern)
+                    if inp.count() > 0 and inp.is_visible():
+                        inp.fill("AI Assistant")
+                        name_filled = True
+                        print(f"✅ Filled name via label: {pattern}")
+                        break
+                        
+                    # Try ID
+                    inp = self.page.locator(f"#{pattern}")
+                    if inp.count() > 0 and inp.is_visible():
+                        inp.fill("AI Assistant")
+                        name_filled = True
+                        print(f"✅ Filled name via ID: {pattern}")
+                        break
+                except:
+                    pass
+            
+            if not name_filled:
+                 # Fallback: try generic input if only one exists or looks right
+                 try:
+                     inputs = self.page.locator("input[type='text']")
+                     if inputs.count() > 0:
+                         for i in range(inputs.count()):
+                             if inputs.nth(i).is_visible():
+                                 inputs.nth(i).fill("AI Assistant")
+                                 print("✅ Filled name via generic input fallback")
+                                 name_filled = True
+                                 break
+                 except:
+                     pass
+
+            # Click Join Button
+            join_btn = self.page.get_by_role("button", name="Join")
+            if join_btn.count() > 0 and join_btn.is_visible():
+                join_btn.click()
+                print("✅ Clicked 'Join' button")
+            else:
+                # Fallback for Join button
+                try:
+                    self.page.locator("button.preview-join-button").click()
+                    print("✅ Clicked 'Join' button via class")
+                except:
+                    print("⚠️ Join button not found")
 
             # 3. Handle 'Join Audio by Computer'
             # Zoom often shows a preview; we wait for the Join Audio button
@@ -79,8 +158,7 @@ class ZoomBot:
 
         except Exception as e:
             print(f"❌ Failed to join: {e}")
-            # Take a screenshot for debugging in Docker
-            self.page.screenshot(path="error_screenshot.png")
+
             self.leave_meeting()
 
     def start_audio_stream(self):
@@ -101,8 +179,8 @@ class ZoomBot:
         except:
             pass
             
-        if self.browser:
-            self.browser.close()
+        if self.context:
+            self.context.close()
         if hasattr(self, 'playwright'):
             self.playwright.stop()
         print("👋 Bot disconnected.")
