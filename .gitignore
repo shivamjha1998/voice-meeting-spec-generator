@@ -34,3 +34,10 @@ coverage/
 
 # AI Agent
 .agent/
+
+# Google Profile
+google_profile/
+
+# Debug files
+**/*.png
+**/*.wav
