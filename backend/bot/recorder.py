@@ -4,7 +4,7 @@ import threading
 import queue
 import subprocess
 import os
-import wave
+import platform
 
 class AudioRecorder:
     def __init__(self, filename="output.wav", chunk_size=1024, format=pyaudio.paInt16, channels=1, rate=44100):
@@ -13,12 +13,48 @@ class AudioRecorder:
         self.format = format
         self.channels = channels
         self.rate = rate
-        self.channels = channels
-        self.rate = rate
         self.p = pyaudio.PyAudio()
         self.is_recording = False
         self.frames = []
-        self.audio_queue = queue.Queue() # For real-time streaming
+        self.audio_queue = queue.Queue()  # For real-time streaming
+        self.device_index = None
+        
+        # Auto-detect BlackHole on macOS
+        if platform.system() == 'Darwin':  # macOS
+            self._find_blackhole_device()
+
+    def _find_blackhole_device(self):
+        """Find BlackHole 2ch device on macOS"""
+        print("🔍 Searching for BlackHole 2ch device...")
+        info = self.p.get_host_api_info_by_index(0)
+        num_devices = info.get('deviceCount')
+        
+        for i in range(num_devices):
+            device_info = self.p.get_device_info_by_host_api_device_index(0, i)
+            device_name = device_info.get('name')
+            
+            # Look for BlackHole 2ch
+            if 'BlackHole 2ch' in device_name and device_info.get('maxInputChannels') > 0:
+                self.device_index = i
+                print(f"✅ Found BlackHole 2ch at device index {i}: {device_name}")
+                print(f"   Max Input Channels: {device_info.get('maxInputChannels')}")
+                print(f"   Default Sample Rate: {device_info.get('defaultSampleRate')}")
+                return
+        
+        if self.device_index is None:
+            print("⚠️ BlackHole 2ch not found. Available devices:")
+            self._list_audio_devices()
+            print("\n💡 Make sure BlackHole 2ch is installed and audio is routed to it.")
+
+    def _list_audio_devices(self):
+        """List all available audio input devices"""
+        info = self.p.get_host_api_info_by_index(0)
+        num_devices = info.get('deviceCount')
+        
+        for i in range(num_devices):
+            device_info = self.p.get_device_info_by_host_api_device_index(0, i)
+            if device_info.get('maxInputChannels') > 0:
+                print(f"   [{i}] {device_info.get('name')} - Channels: {device_info.get('maxInputChannels')}")
 
     def start_recording(self):
         self.is_recording = True
@@ -26,23 +62,39 @@ class AudioRecorder:
         # Clear queue
         with self.audio_queue.mutex:
             self.audio_queue.queue.clear()
-            
-        self.stream = self.p.open(format=self.format,
-                                  channels=self.channels,
-                                  rate=self.rate,
-                                  input=True,
-                                  frames_per_buffer=self.chunk_size)
         
-        self.thread = threading.Thread(target=self._record_loop)
-        self.thread.start()
-        print(f"🎤 Microphone recording started...")
+        try:
+            # Use BlackHole device if found, otherwise use default
+            self.stream = self.p.open(
+                format=self.format,
+                channels=self.channels,
+                rate=self.rate,
+                input=True,
+                input_device_index=self.device_index,  # Use BlackHole device
+                frames_per_buffer=self.chunk_size
+            )
+            
+            self.thread = threading.Thread(target=self._record_loop, daemon=True)
+            self.thread.start()
+            
+            device_name = "default device"
+            if self.device_index is not None:
+                device_info = self.p.get_device_info_by_index(self.device_index)
+                device_name = device_info.get('name')
+            
+            print(f"🎤 Recording started from: {device_name}")
+            
+        except Exception as e:
+            print(f"❌ Failed to start recording: {e}")
+            self.is_recording = False
+            raise
 
     def _record_loop(self):
         while self.is_recording:
             try:
                 data = self.stream.read(self.chunk_size, exception_on_overflow=False)
                 self.frames.append(data)
-                self.audio_queue.put(data) # Add to queue for streaming
+                self.audio_queue.put(data)  # Add to queue for streaming
             except Exception as e:
                 print(f"Error recording audio: {e}")
                 break
@@ -53,14 +105,14 @@ class AudioRecorder:
             try:
                 # Get data with a small timeout to allow checking is_recording
                 chunk = self.audio_queue.get(timeout=1)
-                yield chunk  # <--- FIXED TYPO HERE
+                yield chunk
             except queue.Empty:
                 continue
 
     def stop_recording(self):
         self.is_recording = False
         if hasattr(self, 'thread'):
-            self.thread.join()
+            self.thread.join(timeout=2.0)
         
         if hasattr(self, 'stream'):
             self.stream.stop_stream()
@@ -126,3 +178,8 @@ class AudioRecorder:
                 
         except Exception as e:
             print(f"❌ Error playing audio: {e}")
+
+    def __del__(self):
+        """Cleanup PyAudio instance"""
+        if hasattr(self, 'p'):
+            self.p.terminate()

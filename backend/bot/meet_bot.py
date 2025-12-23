@@ -5,18 +5,14 @@ import redis
 import json
 import base64
 import random
-from playwright.sync_api import sync_playwright, expect
+from playwright.sync_api import sync_playwright
 
-# Fix stealth import
+# Fix stealth import - handle both import styles
 try:
     from playwright_stealth import stealth_sync
 except ImportError:
-    try:
-        from playwright_stealth import stealth
-        stealth_sync = stealth
-    except ImportError:
-        stealth_sync = None
-        print("⚠️ playwright-stealth not available")
+    stealth_sync = None
+    print("⚠️ playwright-stealth not available")
 
 from backend.bot.recorder import AudioRecorder
 
@@ -34,11 +30,18 @@ class GoogleMeetBot:
     def _human_delay(self, min_sec=1, max_sec=3):
         time.sleep(random.uniform(min_sec, max_sec))
 
+    def _safe_screenshot(self, path):
+        """Take screenshot without crashing if it fails"""
+        try:
+            self.page.screenshot(path=path, timeout=5000)
+        except Exception as e:
+            print(f"⚠️ Screenshot failed: {e}")
+
     def join_meeting(self, meeting_url: str):
         print(f"🤖 Bot starting with profile: {self.user_data_dir}")
         self.playwright = sync_playwright().start()
         
-        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
         self.context = self.playwright.chromium.launch_persistent_context(
             user_data_dir=self.user_data_dir,
@@ -46,29 +49,27 @@ class GoogleMeetBot:
             user_agent=user_agent,
             args=[
                 "--use-fake-ui-for-media-stream",
-                "--use-fake-device-for-media-stream",
+                # REMOVED: --use-fake-device-for-media-stream (Major detection vector)
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-infobars",
                 "--disable-dev-shm-usage",
-                "--disable-web-security",
-                "--disable-features=IsolateOrigins,site-per-process",
+                # REMOVED: --disable-web-security (High detection risk)
             ],
-            ignore_default_args=["--enable-automation", "--enable-blink-features=AutomationControlled"],
+            ignore_default_args=["--enable-automation"],
             permissions=["microphone", "camera"],
             viewport={"width": 1280, "height": 720},
-            bypass_csp=True,
         )
         
         self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
         
-        # Apply stealth correctly
+        # Apply stealth if available
         if stealth_sync:
             try:
                 stealth_sync(self.page)
                 print("✅ Stealth applied successfully")
             except Exception as e:
-                print(f"⚠️ Stealth error: {e}")
+                print(f"⚠️ Stealth error (non-critical): {e}")
         
         # Override webdriver property
         self.page.add_init_script("""
@@ -83,7 +84,7 @@ class GoogleMeetBot:
             
             # Wait for page to stabilize
             self._human_delay(3, 5)
-            self.page.screenshot(path="debug_01_landing.png")
+            self._safe_screenshot("debug_01_landing.png")
 
             # Dismiss any popups/notifications
             self._dismiss_popups()
@@ -93,231 +94,300 @@ class GoogleMeetBot:
             self._disable_media_devices()
             self._human_delay(1, 2)
 
-            # Fill in name field - THIS IS CRITICAL
+            # Fill in name field
             print("📝 Filling name field...")
-            name_filled = self._fill_name_field()
-            if not name_filled:
-                print("⚠️ Could not fill name field - trying alternative method")
-                self._fill_name_alternative()
+            self._fill_name_field()
             
             self._human_delay(2, 3)
-            self.page.screenshot(path="debug_02_name_filled.png")
+            self._safe_screenshot("debug_02_name_filled.png")
 
-            # Now try to join
+            # Try to join meeting
             print("🚪 Attempting to join meeting...")
-            join_success = self._click_join_button()
+            join_success = self._attempt_join()
             
             if not join_success:
-                self.page.screenshot(path="debug_03_join_failed.png")
-                # Try one more time with force
-                print("⚠️ First join attempt failed, trying with force...")
-                self._human_delay(2, 3)
-                join_success = self._click_join_button(force=True)
-            
-            if not join_success:
-                raise Exception("Could not click join button after multiple attempts")
+                self._safe_screenshot("debug_03_join_failed.png")
+                raise Exception("Could not join the meeting - button not clickable or meeting restricted")
 
-            # Verify we're in the meeting
+            # Wait and verify we're in the meeting
             print("⌛ Waiting for meeting interface...")
-            self._human_delay(3, 5)
-            
-            try:
-                # Check for various indicators that we're in the meeting
-                in_meeting = (
-                    self.page.locator('button[aria-label*="Leave"]').is_visible(timeout=15000) or
-                    self.page.locator('[data-call-ended="false"]').is_visible(timeout=5000) or
-                    self.page.locator('[data-meeting-title]').is_visible(timeout=5000)
-                )
-                
-                if in_meeting:
-                    self.is_connected = True
-                    print("✅ Successfully joined the meeting!")
-                    self.page.screenshot(path="debug_04_success.png")
-                    threading.Thread(target=self._maintain_presence, daemon=True).start()
-                else:
-                    raise Exception("Could not verify meeting entry")
-                    
-            except Exception as e:
-                self.page.screenshot(path="debug_04_timeout.png")
-                # Check if we were kicked
-                if "can't join this video call" in self.page.content().lower():
-                    raise Exception("Bot was blocked/kicked from the meeting")
-                raise Exception(f"Timeout waiting for meeting interface: {e}")
+            if self._verify_meeting_joined():
+                self.is_connected = True
+                print("✅ Successfully joined the meeting!")
+                self._safe_screenshot("debug_04_success.png")
+                threading.Thread(target=self._maintain_presence, daemon=True).start()
+            else:
+                raise Exception("Could not verify successful meeting entry")
 
         except Exception as e:
             print(f"❌ Join Error: {e}")
-            self.page.screenshot(path="error_final.png")
-            with open("error_page_content.html", "w", encoding="utf-8") as f:
-                f.write(self.page.content())
+            self._safe_screenshot("error_final.png")
+            
+            # Debug: Save page content
+            try:
+                with open("error_page_content.html", "w", encoding="utf-8") as f:
+                    f.write(self.page.content())
+            except:
+                pass
+            
             self.leave_meeting()
             raise e
 
     def _dismiss_popups(self):
         """Dismiss any popups or permission requests"""
+        dismiss_patterns = [
+            "Got it", "Dismiss", "No thanks", "Not now", "Close", "OK"
+        ]
+        
+        for pattern in dismiss_patterns:
+            try:
+                buttons = self.page.get_by_role("button", name=pattern)
+                count = buttons.count()
+                for i in range(count):
+                    try:
+                        if buttons.nth(i).is_visible(timeout=1000):
+                            buttons.nth(i).click(timeout=2000)
+                            print(f"✅ Dismissed popup: {pattern}")
+                            self._human_delay(0.5, 1)
+                    except:
+                        pass
+            except:
+                pass
+
+    def _disable_media_devices(self):
+        """Disable camera and microphone before joining"""
+        # Strategy: Click the toggle buttons in the pre-join screen
+        # Google Meet typically shows camera/mic buttons before joining
+        
+        # Wait a bit for controls to appear
+        self._human_delay(1, 2)
+        
+        # Try multiple strategies to disable media
+        strategies = [
+            self._disable_via_aria_labels,
+            self._disable_via_visual_search,
+            self._disable_via_keyboard
+        ]
+        
+        for strategy in strategies:
+            try:
+                if strategy():
+                    return
+            except Exception as e:
+                print(f"⚠️ Strategy failed: {e}")
+        
+        print("⚠️ Could not confirm media disabled, but continuing...")
+
+    def _disable_via_aria_labels(self):
+        """Try to disable via aria labels"""
+        success = False
+        
+        # Camera patterns
+        cam_patterns = ["Turn off camera", "camera", "cam"]
+        for pattern in cam_patterns:
+            try:
+                btn = self.page.get_by_role("button", name=pattern).first
+                if btn.is_visible(timeout=2000):
+                    btn.click(timeout=2000)
+                    print(f"✅ Camera disabled via '{pattern}'")
+                    success = True
+                    break
+            except:
+                pass
+        
+        # Microphone patterns  
+        mic_patterns = ["Turn off microphone", "microphone", "mic", "mute"]
+        for pattern in mic_patterns:
+            try:
+                btn = self.page.get_by_role("button", name=pattern).first
+                if btn.is_visible(timeout=2000):
+                    btn.click(timeout=2000)
+                    print(f"✅ Microphone disabled via '{pattern}'")
+                    success = True
+                    break
+            except:
+                pass
+        
+        return success
+
+    def _disable_via_visual_search(self):
+        """Try to find and click media buttons visually"""
         try:
-            # Dismiss cookie/privacy notices
-            dismiss_selectors = [
-                "button:has-text('Got it')",
-                "button:has-text('Dismiss')",
-                "button:has-text('No thanks')",
-                "[aria-label='Dismiss']"
-            ]
-            for selector in dismiss_selectors:
+            # Look for SVG icons that typically represent camera/mic
+            buttons = self.page.locator('button').all()
+            
+            for btn in buttons[:10]:  # Only check first 10 buttons
                 try:
-                    btn = self.page.locator(selector).first
-                    if btn.is_visible(timeout=2000):
-                        btn.click()
-                        self._human_delay(0.5, 1)
+                    if btn.is_visible():
+                        aria_label = btn.get_attribute('aria-label') or ''
+                        if any(word in aria_label.lower() for word in ['camera', 'microphone', 'video', 'audio']):
+                            btn.click(timeout=1000)
+                            print(f"✅ Clicked media button: {aria_label}")
+                except:
+                    pass
+            
+            return True
+        except:
+            return False
+
+    def _disable_via_keyboard(self):
+        """Try keyboard shortcuts to disable media"""
+        try:
+            # Google Meet shortcuts
+            self.page.keyboard.press("Control+e")  # Toggle camera
+            self._human_delay(0.3, 0.5)
+            self.page.keyboard.press("Control+d")  # Toggle mic
+            print("✅ Media toggled via keyboard shortcuts")
+            return True
+        except:
+            return False
+
+    def _fill_name_field(self):
+        """Fill the name field if present"""
+        name_patterns = ["Your name", "name", "Name"]
+        
+        for pattern in name_patterns:
+            try:
+                field = self.page.get_by_placeholder(pattern).first
+                if field.is_visible(timeout=3000):
+                    field.click()
+                    self._human_delay(0.3, 0.5)
+                    field.fill("Meet")
+                    print(f"✅ Name filled via placeholder: {pattern}")
+                    return True
+            except:
+                pass
+        
+        # Try via aria-label
+        for pattern in name_patterns:
+            try:
+                field = self.page.get_by_label(pattern).first
+                if field.is_visible(timeout=3000):
+                    field.click()
+                    self._human_delay(0.3, 0.5)
+                    field.fill("AI Assistant")
+                    print(f"✅ Name filled via label: {pattern}")
+                    return True
+            except:
+                pass
+        
+        # Fallback: Try any text input
+        try:
+            inputs = self.page.locator('input[type="text"]').all()
+            if inputs:
+                inputs[0].click()
+                self._human_delay(0.3, 0.5)
+                inputs[0].fill("AI Assistant")
+                print("✅ Name filled via first text input")
+                return True
+        except:
+            pass
+        
+        print("⚠️ Could not find name field (may not be required)")
+        return False
+
+    def _attempt_join(self):
+        """Try multiple strategies to join the meeting"""
+        # Wait a bit for join button to appear
+        self._human_delay(2, 3)
+        
+        # Strategy 1: Look for "Ask to join" or "Join now" buttons
+        join_patterns = ["Ask to join", "Join now", "Join", "Ask"]
+        
+        for pattern in join_patterns:
+            try:
+                button = self.page.get_by_role("button", name=pattern).first
+                if button.is_visible(timeout=5000):
+                    print(f"🔍 Found button: {pattern}")
+                    
+                    # Check if disabled
+                    is_disabled = button.evaluate("btn => btn.disabled || btn.getAttribute('aria-disabled') === 'true'")
+                    
+                    if is_disabled:
+                        print(f"⚠️ Button '{pattern}' is disabled, waiting...")
+                        self._human_delay(2, 3)
+                        # Try again
+                        is_disabled = button.evaluate("btn => btn.disabled || btn.getAttribute('aria-disabled') === 'true'")
+                    
+                    if not is_disabled:
+                        button.click(timeout=5000)
+                        print(f"✅ Clicked: {pattern}")
+                        return True
+                    else:
+                        # Force click anyway
+                        print(f"⚠️ Force clicking disabled button...")
+                        button.evaluate("btn => btn.click()")
+                        return True
+            except Exception as e:
+                print(f"⚠️ Could not click '{pattern}': {str(e)[:100]}")
+        
+        # Strategy 2: Look for any button with "join" in the text
+        try:
+            buttons = self.page.locator('button').all()
+            for btn in buttons:
+                try:
+                    text = btn.inner_text(timeout=500).lower()
+                    if 'join' in text or 'ask' in text:
+                        print(f"🔍 Found button with text: {text}")
+                        btn.click(timeout=2000)
+                        print(f"✅ Clicked button")
+                        return True
                 except:
                     pass
         except:
             pass
-
-    def _disable_media_devices(self):
-        """Disable camera and microphone before joining"""
-        try:
-            # Try clicking the camera/mic buttons directly
-            cam_selectors = [
-                "[aria-label*='camera' i][aria-label*='off' i]",
-                "[aria-label*='Turn off camera' i]",
-                "button[data-is-muted='false'][aria-label*='camera' i]"
-            ]
-            
-            mic_selectors = [
-                "[aria-label*='microphone' i][aria-label*='off' i]",
-                "[aria-label*='Turn off microphone' i]",
-                "button[data-is-muted='false'][aria-label*='microphone' i]"
-            ]
-            
-            for selector in cam_selectors:
-                try:
-                    btn = self.page.locator(selector).first
-                    if btn.is_visible(timeout=2000):
-                        btn.click()
-                        print("✅ Camera disabled")
-                        break
-                except:
-                    pass
-            
-            for selector in mic_selectors:
-                try:
-                    btn = self.page.locator(selector).first
-                    if btn.is_visible(timeout=2000):
-                        btn.click()
-                        print("✅ Microphone disabled")
-                        break
-                except:
-                    pass
-            
-            # Also try keyboard shortcuts as backup
-            try:
-                self.page.keyboard.press("Control+e")  # Toggle camera
-                self._human_delay(0.3, 0.5)
-                self.page.keyboard.press("Control+d")  # Toggle mic
-                print("✅ Media disabled via shortcuts")
-            except:
-                pass
-                
-        except Exception as e:
-            print(f"⚠️ Could not disable media: {e}")
-
-    def _fill_name_field(self):
-        """Fill the name field if present"""
-        name_selectors = [
-            "input[aria-label='Your name']",
-            "input[placeholder='Your name']",
-            "input[type='text'][aria-label*='name' i]",
-            "input.YPqjbf"  # Google Meet specific class
-        ]
-        
-        for selector in name_selectors:
-            try:
-                field = self.page.locator(selector).first
-                if field.is_visible(timeout=3000):
-                    field.click()
-                    self._human_delay(0.3, 0.7)
-                    field.fill("")  # Clear first
-                    self._human_delay(0.2, 0.4)
-                    field.type("AI Assistant", delay=random.randint(50, 150))
-                    self._human_delay(0.5, 1)
-                    print(f"✅ Name filled using selector: {selector}")
-                    return True
-            except:
-                continue
         
         return False
 
-    def _fill_name_alternative(self):
-        """Alternative method to fill name using JavaScript"""
-        try:
-            self.page.evaluate("""
-                const inputs = document.querySelectorAll('input[type="text"]');
-                for (let input of inputs) {
-                    if (input.placeholder?.toLowerCase().includes('name') || 
-                        input.ariaLabel?.toLowerCase().includes('name')) {
-                        input.value = 'AI Assistant';
-                        input.dispatchEvent(new Event('input', { bubbles: true }));
-                        input.dispatchEvent(new Event('change', { bubbles: true }));
-                        return true;
-                    }
-                }
-                return false;
-            """)
-            print("✅ Name filled using JavaScript")
-        except Exception as e:
-            print(f"⚠️ Alternative name fill failed: {e}")
-
-    def _click_join_button(self, force=False):
-        """Try to click the join button"""
-        join_selectors = [
-            "button:has-text('Join now')",
-            "button:has-text('Ask to join')",
-            "button span:has-text('Join now')",
-            "button span:has-text('Ask to join')",
-            "[jsname='Qx7uuf']",  # Google Meet specific
-            "button.VfPpkd-LgbsSe[jsname='Qx7uuf']"
+    def _verify_meeting_joined(self):
+        """Verify that we successfully joined the meeting"""
+        # Wait a bit for the meeting interface to load
+        self._human_delay(5, 7)
+        
+        # Look for indicators that we're in a meeting
+        indicators = [
+            ('button[aria-label*="Leave"]', "Leave button"),
+            ('button[aria-label*="leave"]', "leave button"),
+            ('[data-call-ended="false"]', "Active call indicator"),
+            ('div[jsname="b0t70b"]', "Google Meet main view"),
         ]
         
-        for selector in join_selectors:
+        for selector, name in indicators:
             try:
-                btn = self.page.locator(selector).first
-                
-                # Check if button exists and is visible
-                if not btn.is_visible(timeout=5000):
-                    continue
-                
-                print(f"🔍 Found join button: {selector}")
-                
-                # Wait a bit more for button to be enabled
-                self._human_delay(1, 2)
-                
-                # Check if button is disabled via aria or attribute
-                is_disabled = btn.evaluate("el => el.disabled || el.ariaDisabled === 'true'")
-                
-                if is_disabled and not force:
-                    print(f"⚠️ Button is disabled, waiting...")
-                    self._human_delay(2, 3)
-                    is_disabled = btn.evaluate("el => el.disabled || el.ariaDisabled === 'true'")
-                
-                if is_disabled and not force:
-                    print(f"⚠️ Button still disabled after wait")
-                    continue
-                
-                # Try to click
-                if force:
-                    # Force click using JavaScript
-                    btn.evaluate("el => el.click()")
-                    print(f"✅ Force-clicked: {selector}")
-                else:
-                    btn.click(timeout=5000)
-                    print(f"✅ Clicked: {selector}")
-                
-                return True
-                
-            except Exception as e:
-                print(f"⚠️ Could not click {selector}: {str(e)[:100]}")
-                continue
+                if self.page.locator(selector).is_visible(timeout=3000):
+                    print(f"✅ Found {name}")
+                    return True
+            except:
+                pass
         
+        # Check page content for signs we were rejected
+        try:
+            content = self.page.content().lower()
+            rejection_phrases = [
+                "can't join this video call",
+                "you can't join this call",
+                "meeting ended",
+                "not allowed",
+                "denied"
+            ]
+            
+            for phrase in rejection_phrases:
+                if phrase in content:
+                    print(f"❌ Detected rejection: '{phrase}'")
+                    return False
+        except:
+            pass
+        
+        # Last check: see if URL changed to meeting room
+        try:
+            current_url = self.page.url
+            if '/meet/' in current_url or 'meet.google.com' in current_url:
+                print(f"✅ URL indicates we're in meeting: {current_url}")
+                return True
+        except:
+            pass
+        
+        print("⚠️ Could not confirm meeting joined")
         return False
 
     def _maintain_presence(self):
@@ -325,24 +395,33 @@ class GoogleMeetBot:
         while self.is_connected:
             try:
                 # Move mouse occasionally
-                x = random.randint(100, 500)
-                y = random.randint(100, 500)
-                self.page.mouse.move(x, y, steps=random.randint(3, 8))
+                x = random.randint(200, 800)
+                y = random.randint(200, 600)
+                self.page.mouse.move(x, y, steps=random.randint(5, 15))
                 
-                # Occasionally check if we're still in the meeting
-                if not self.page.locator('button[aria-label*="Leave"]').is_visible(timeout=5000):
-                    print("⚠️ Detected we're no longer in the meeting")
-                    self.is_connected = False
-                    break
+                # Check if still in meeting
+                try:
+                    if not self.page.locator('button[aria-label*="Leave"]').is_visible(timeout=3000):
+                        print("⚠️ Leave button not found - may have been kicked")
+                        self.is_connected = False
+                        break
+                except:
+                    pass
                 
-                time.sleep(random.randint(30, 60))
-            except:
+                # Random wait between movements
+                time.sleep(random.randint(45, 90))
+                
+            except Exception as e:
+                print(f"⚠️ Presence maintenance error: {e}")
                 break
 
     def start_audio_stream(self):
         if self.is_connected:
-            self.recorder.start_recording()
-            threading.Thread(target=self._consume_stream, daemon=True).start()
+            try:
+                self.recorder.start_recording()
+                threading.Thread(target=self._consume_stream, daemon=True).start()
+            except Exception as e:
+                print(f"❌ Failed to start audio recording: {e}")
 
     def _consume_stream(self):
         r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
@@ -359,18 +438,24 @@ class GoogleMeetBot:
 
     def leave_meeting(self):
         self.is_connected = False
+        
+        # Stop recording
         try:
             self.recorder.stop_recording()
-        except:
-            pass
+        except Exception as e:
+            print(f"⚠️ Error stopping recorder: {e}")
+        
+        # Close browser
         try:
             if self.context:
                 self.context.close()
-        except:
-            pass
+        except Exception as e:
+            print(f"⚠️ Error closing context: {e}")
+        
         try:
             if self.playwright:
                 self.playwright.stop()
-        except:
-            pass
+        except Exception as e:
+            print(f"⚠️ Error stopping playwright: {e}")
+        
         print("🛑 Shutdown Complete.")
