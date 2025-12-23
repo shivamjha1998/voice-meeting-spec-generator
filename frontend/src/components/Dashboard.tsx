@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Card, Button, Form, Row, Col, Badge, Spinner, ListGroup } from 'react-bootstrap';
+import { Card, Button, Form, Row, Col, Badge, Spinner, ListGroup, Modal } from 'react-bootstrap';
 
 interface Meeting {
     id: number;
@@ -35,8 +35,12 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
     const [repos, setRepos] = useState<Repository[]>([]);
     const [selectedRepoUrl, setSelectedRepoUrl] = useState("");
 
-    // Track which specific project is starting a meeting to show a spinner on just that button
-    const [startingMeetingFor, setStartingMeetingFor] = useState<number | null>(null);
+    // --- Consent Flow variables ---
+    const [showMeetingModal, setShowMeetingModal] = useState(false);
+    const [meetingUrl, setMeetingUrl] = useState("");
+    const [consentChecked, setConsentChecked] = useState(false);
+    const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
+    const [startingMeeting, setStartingMeeting] = useState(false);
 
     const refreshProjects = () => {
         fetch('http://localhost:8000/projects/')
@@ -61,6 +65,13 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
                 .catch(err => console.error(err));
         }
     }, [userId]);
+
+    const handleOpenMeetingModal = (projectId: number) => {
+        setActiveProjectId(projectId);
+        setMeetingUrl("");
+        setConsentChecked(false);
+        setShowMeetingModal(true);
+    };
 
     const handleCreateProject = async () => {
         if (!newProjectName.trim()) return;
@@ -90,44 +101,34 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
         }
     };
 
-    const handleCreateMeeting = async (projectId: number) => {
-        const url = prompt("Enter Meeting URL (e.g. https://zoom.us/...):", "https://zoom.us/test");
-        if (!url) return;
+    const handleCreateMeeting = async () => {
+        if (!activeProjectId || !meetingUrl || !consentChecked) return;
 
-        setStartingMeetingFor(projectId);
+        setStartingMeeting(true);
 
         try {
             const res = await fetch('http://localhost:8000/meetings/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    project_id: projectId,
-                    platform: "zoom", // You could add logic here to detect google vs zoom
-                    meeting_url: url
+                    project_id: activeProjectId,
+                    platform: meetingUrl.includes('google') ? 'google_meet' : 'zoom',
+                    meeting_url: meetingUrl
                 })
             });
 
             if (res.ok) {
                 const meeting = await res.json();
-
                 // Auto-join Bot
-                try {
-                    await fetch(`http://localhost:8000/meetings/${meeting.id}/join`, { method: 'POST' });
-                    // alert("Bot requested to join."); // Optional feedback
-                } catch (e) {
-                    console.error("Failed to auto-join bot:", e);
-                }
-
-                // Navigate to the meeting page
+                await fetch(`http://localhost:8000/meetings/${meeting.id}/join`, { method: 'POST' });
                 navigate(`/meeting/${meeting.id}`);
-            } else {
-                alert("Failed to create meeting on server.");
             }
         } catch (err) {
             console.error(err);
-            alert("Network error.");
+            alert("Failed to start meeting.");
         } finally {
-            setStartingMeetingFor(null);
+            setStartingMeeting(false);
+            setShowMeetingModal(false);
         }
     };
 
@@ -177,11 +178,56 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
                 </Card.Body>
             </Card>
 
+            {/* Meeting Start Modal (Consent Flow) */}
+            <Modal show={showMeetingModal} onHide={() => setShowMeetingModal(false)} centered>
+                <Modal.Header closeButton>
+                    <Modal.Title className="fw-bold">Start New Meeting</Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                    <Form.Group className="mb-3">
+                        <Form.Label>Meeting URL (Zoom or Google Meet)</Form.Label>
+                        <Form.Control
+                            type="url"
+                            placeholder="https://..."
+                            value={meetingUrl}
+                            onChange={(e) => setMeetingUrl(e.target.value)}
+                        />
+                    </Form.Group>
+
+                    <Card className="bg-light border-0 mb-3">
+                        <Card.Body>
+                            <Form.Check
+                                type="checkbox"
+                                id="consent-checkbox"
+                                label="I have notified all participants that an AI Bot will join and record this meeting."
+                                checked={consentChecked}
+                                onChange={(e) => setConsentChecked(e.target.checked)}
+                                className="small fw-bold"
+                            />
+                            <Form.Text className="text-muted">
+                                Required for legal compliance and bot participation.
+                            </Form.Text>
+                        </Card.Body>
+                    </Card>
+                </Modal.Body>
+                <Modal.Footer>
+                    <Button variant="secondary" onClick={() => setShowMeetingModal(false)}>Cancel</Button>
+                    <Button
+                        variant="success"
+                        onClick={handleCreateMeeting}
+                        disabled={!meetingUrl || !consentChecked || startingMeeting}
+                    >
+                        {startingMeeting ? <Spinner size="sm" className="me-2" /> : null}
+                        Start Meeting & Invite Bot
+                    </Button>
+                </Modal.Footer>
+            </Modal>
+
             {/* Projects Grid */}
             <Row xs={1} md={2} lg={3} className="g-4">
                 {projects.map((project) => (
                     <Col key={project.id}>
-                        <Card className="h-100 shadow-sm border-0 hover-shadow transition-all">
+                        <Card className="h-100 shadow-sm border-0">
                             <Card.Body className="d-flex flex-column">
                                 <div className="d-flex justify-content-between align-items-start mb-2">
                                     <h5 className="card-title fw-bold text-truncate" title={project.name}>
@@ -218,17 +264,9 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
                                     <Button
                                         variant="success"
                                         size="sm"
-                                        onClick={() => handleCreateMeeting(project.id)}
-                                        disabled={startingMeetingFor === project.id}
+                                        onClick={() => handleOpenMeetingModal(project.id)}
                                     >
-                                        {startingMeetingFor === project.id ? (
-                                            <>
-                                                <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" className="me-2" />
-                                                Starting...
-                                            </>
-                                        ) : (
-                                            "+ Start New Meeting"
-                                        )}
+                                        + Start New Meeting
                                     </Button>
                                     <Link to={`/projects/${project.id}`} className="btn btn-outline-primary btn-sm">
                                         View Project Details

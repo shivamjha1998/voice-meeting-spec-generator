@@ -45,7 +45,7 @@ def main():
                 if len(context_buffer) >= MAX_BUFFER:
                     full_context = "\n".join(context_buffer)
                     
-                    # [cite_start]Fetch prompt from settings [cite: 209]
+                    # Fetch prompt from settings
                     q_setting = db.query(models.Setting).filter(models.Setting.key == "question_prompt").first()
                     prompt = q_setting.value if q_setting else None
                     
