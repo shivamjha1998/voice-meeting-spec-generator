@@ -113,7 +113,8 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
                 body: JSON.stringify({
                     project_id: activeProjectId,
                     platform: meetingUrl.includes('google') ? 'google_meet' : 'zoom',
-                    meeting_url: meetingUrl
+                    meeting_url: meetingUrl,
+                    consent_verified: consentChecked
                 })
             });
 

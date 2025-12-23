@@ -25,7 +25,16 @@ def delete_project(db: Session, project_id: int):
     return db_project
 
 def create_meeting(db: Session, meeting: schemas.MeetingCreate):
-    db_meeting = models.Meeting(**meeting.dict())
+    # Prepare meeting data
+    meeting_data = meeting.dict()
+    consent_given = meeting_data.pop("consent_verified", False)
+    
+    db_meeting = models.Meeting(**meeting_data)
+    
+    # Set the audit timestamp if consent was verified
+    if consent_given:
+        db_meeting.consent_verified_at = datetime.utcnow()
+        
     db.add(db_meeting)
     db.commit()
     db.refresh(db_meeting)

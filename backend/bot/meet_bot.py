@@ -107,9 +107,8 @@ class GoogleMeetBot:
             print("⌛ Waiting for meeting interface...")
             if self._verify_meeting_joined():
                 self.is_connected = True
-                self.start_playback_listener()
+                self._announce_presence()
                 print("✅ Successfully joined the meeting!")
-                threading.Thread(target=self._maintain_presence, daemon=True).start()
             else:
                 raise Exception("Could not verify successful meeting entry")
 
@@ -376,30 +375,32 @@ class GoogleMeetBot:
         print("⚠️ Could not confirm meeting joined")
         return False
 
-    def _maintain_presence(self):
-        """Maintain presence to avoid being kicked for inactivity"""
-        while self.is_connected:
-            try:
-                # Move mouse occasionally
+    def perform_maintenance(self):
+        """Called periodically by the main thread."""
+        if not self.is_connected:
+            return
+
+        try:
+            current_time = time.time()
+            if not hasattr(self, '_last_mouse_move'):
+                self._last_mouse_move = 0
+            
+            if current_time - self._last_mouse_move > 45: 
                 x = random.randint(200, 800)
                 y = random.randint(200, 600)
-                self.page.mouse.move(x, y, steps=random.randint(5, 15))
+                self.page.mouse.move(x, y)
                 
-                # Check if still in meeting
+                # Check if kicked
                 try:
-                    if not self.page.locator('button[aria-label*="Leave"]').is_visible(timeout=3000):
+                    if not self.page.locator('button[aria-label*="Leave"]').is_visible(timeout=1000):
                         print("⚠️ Leave button not found - may have been kicked")
                         self.is_connected = False
-                        break
                 except:
                     pass
-                
-                # Random wait between movements
-                time.sleep(random.randint(45, 90))
-                
-            except Exception as e:
-                print(f"⚠️ Presence maintenance error: {e}")
-                break
+
+                self._last_mouse_move = current_time
+        except Exception:
+            pass
 
     def start_audio_stream(self):
         if self.is_connected:
@@ -422,34 +423,6 @@ class GoogleMeetBot:
                 }
                 r.rpush("meeting_audio_queue", json.dumps(msg))
 
-    def start_playback_listener(self):
-        """Starts a thread to listen for audio playback requests."""
-        if not self.playback_thread_started:
-            self.playback_thread_started = True
-            threading.Thread(target=self._playback_loop, daemon=True).start()
-            print("🔈 Bot playback listener active.")
-
-    def _playback_loop(self):
-        """Monitors Redis for audio files to play back into the meeting."""
-        r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
-        
-        while self.is_connected:
-            try:
-                # Blocking pop for this specific meeting's playback
-                item = r.blpop("audio_playback_queue", timeout=3)
-                if item:
-                    _, data_str = item
-                    data = json.loads(data_str)
-                    
-                    # Only play if it belongs to this meeting
-                    if data.get("meeting_id") == self.meeting_id:
-                        file_path = data.get("file_path")
-                        if file_path and os.path.exists(file_path):
-                            # Play using the utility in recorder.py
-                            self.recorder.play_audio(file_path)
-            except Exception as e:
-                print(f"⚠️ Playback Loop Error: {e}")
-                time.sleep(1)
 
 
     def leave_meeting(self):
@@ -475,3 +448,19 @@ class GoogleMeetBot:
             print(f"⚠️ Error stopping playwright: {e}")
         
         print("🛑 Shutdown Complete.")
+
+    def _announce_presence(self):
+        """Triggers the bot's initial voice introduction."""
+        announcement = (
+            "Hello everyone, I am the AI Meeting Assistant. "
+            "I have joined to record and transcribe this meeting to generate specifications. "
+            "Recording is now active."
+        )
+        
+        msg = {
+            "meeting_id": self.meeting_id,
+            "text": announcement
+        }
+        # Push to the TTS queue
+        self.redis_client.rpush("speak_request_queue", json.dumps(msg))
+        print(f"📣 Presence announcement queued for Meeting {self.meeting_id}")

@@ -5,6 +5,7 @@ from datetime import datetime
 class MeetingBase(BaseModel):
     meeting_url: str
     platform: str
+    consent_verified: bool = False
 
 class MeetingCreate(MeetingBase):
     project_id: int
@@ -14,6 +15,7 @@ class Meeting(MeetingBase):
     project_id: int
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
+    consent_verified_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

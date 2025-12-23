@@ -73,6 +73,11 @@ def main():
                         except Exception as e:
                             print(f"Playback Error: {e}")
                         
+                        # 3. Perform Bot Maintenance (Move mouse, check kicked status)
+                        # This must be done on the main thread because of Playwright Sync API
+                        if bot:
+                            bot.perform_maintenance()
+                        
                         time.sleep(0.5)
                         
                 except Exception as e:

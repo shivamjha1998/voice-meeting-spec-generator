@@ -29,10 +29,12 @@ class Meeting(Base):
     meeting_url = Column(String)
     started_at = Column(DateTime(timezone=True), nullable=True)
     ended_at = Column(DateTime(timezone=True), nullable=True)
+    consent_verified_at = Column(DateTime(timezone=True), nullable=True)
 
     project = relationship("Project", back_populates="meetings")
     transcripts = relationship("Transcript", back_populates="meeting")
     specifications = relationship("Specification", back_populates="meeting")
+    audio_files = relationship("AudioFile", back_populates="meeting")
 
 class Transcript(Base):
     __tablename__ = "transcripts"
@@ -93,7 +95,7 @@ class AudioFile(Base):
     id = Column(Integer, primary_key=True, index=True)
     meeting_id = Column(Integer, ForeignKey("meetings.id"))
     file_path = Column(String)
-    duration = Column(Integer, nullable=True) # Duration in seconds
+    duration = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    meeting = relationship("Meeting")
+    meeting = relationship("Meeting", back_populates="audio_files")

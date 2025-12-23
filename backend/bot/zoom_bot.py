@@ -158,7 +158,6 @@ class ZoomBot:
             try:
                 join_audio_btn.wait_for(timeout=15000)
                 join_audio_btn.click()
-                self.start_playback_listener()
                 print("✅ Clicked 'Join Audio by Computer'")
             except:
                 print("⚠️ 'Join Audio' button not found (might be auto-joined)")
@@ -166,7 +165,7 @@ class ZoomBot:
             self.is_connected = True
             print("✅ Bot Successfully Connected to Zoom")
 
-            threading.Thread(target=self._maintain_presence, daemon=True).start()
+            self._announce_presence()
 
         except Exception as e:
             print(f"❌ Failed to join: {e}")
@@ -184,46 +183,30 @@ class ZoomBot:
         # Start streaming thread
         threading.Thread(target=self._consume_stream, daemon=True).start()
 
-    def _maintain_presence(self):
-        """Simulates activity to avoid being kicked for inactivity."""
-        while self.is_connected:
-            try:
-                # Random mouse movements
+    def perform_maintenance(self):
+        """Called periodically by the main thread to simulate activity."""
+        if not self.is_connected:
+            return
+            
+        try:
+            # Random mouse movements (only if possible without blocking too much)
+            # Actually, blocking here for 0.1s is fine.
+            # Only do it occasionally based on time check?
+            current_time = time.time()
+            if not hasattr(self, '_last_mouse_move'):
+                self._last_mouse_move = 0
+            
+            if current_time - self._last_mouse_move > 45: # Move every ~45 seconds
                 x = random.randint(100, 1000)
                 y = random.randint(100, 600)
-                self.page.mouse.move(x, y, steps=random.randint(10, 20))
-                time.sleep(random.randint(30, 60))
-            except:
-                break
-    
-    def start_playback_listener(self):
-        """Starts a thread to listen for audio playback requests."""
-        if not self.playback_thread_started:
-            self.playback_thread_started = True
-            threading.Thread(target=self._playback_loop, daemon=True).start()
-            print("🔈 Bot playback listener active.")
+                self.page.mouse.move(x, y) 
+                self._last_mouse_move = current_time
+        except Exception:
+            pass
 
-    def _playback_loop(self):
-        """Monitors Redis for audio files to play back into the meeting."""
-        r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
-        
-        while self.is_connected:
-            try:
-                # Blocking pop for this specific meeting's playback
-                item = r.blpop("audio_playback_queue", timeout=3)
-                if item:
-                    _, data_str = item
-                    data = json.loads(data_str)
-                    
-                    # Only play if it belongs to this meeting
-                    if data.get("meeting_id") == self.meeting_id:
-                        file_path = data.get("file_path")
-                        if file_path and os.path.exists(file_path):
-                            # Play using the utility in recorder.py
-                            self.recorder.play_audio(file_path)
-            except Exception as e:
-                print(f"⚠️ Playback Loop Error: {e}")
-                time.sleep(1)
+    # No longer needed as thread
+    # def start_playback_listener(self): ...
+    # def _playback_loop(self): ...
 
     def leave_meeting(self):
         self.is_connected = False
@@ -249,3 +232,19 @@ class ZoomBot:
                     "timestamp": time.time()
                 }
                 r.rpush("meeting_audio_queue", json.dumps(msg))
+
+    def _announce_presence(self):
+        """Triggers the bot's initial voice introduction."""
+        announcement = (
+            "Hello everyone, I am the AI Meeting Assistant. "
+            "I have joined to record and transcribe this meeting to generate specifications. "
+            "Recording is now active."
+        )
+    
+        msg = {
+            "meeting_id": self.meeting_id,
+            "text": announcement
+        }
+        # Push to the TTS queue
+        self.redis_client.rpush("speak_request_queue", json.dumps(msg))
+        print(f"📣 Presence announcement queued for Meeting {self.meeting_id}")
