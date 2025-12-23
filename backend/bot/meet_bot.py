@@ -30,12 +30,6 @@ class GoogleMeetBot:
     def _human_delay(self, min_sec=1, max_sec=3):
         time.sleep(random.uniform(min_sec, max_sec))
 
-    def _safe_screenshot(self, path):
-        """Take screenshot without crashing if it fails"""
-        try:
-            self.page.screenshot(path=path, timeout=5000)
-        except Exception as e:
-            print(f"⚠️ Screenshot failed: {e}")
 
     def join_meeting(self, meeting_url: str):
         print(f"🤖 Bot starting with profile: {self.user_data_dir}")
@@ -43,20 +37,19 @@ class GoogleMeetBot:
         
         user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
+        # Inside meet_bot.py
         self.context = self.playwright.chromium.launch_persistent_context(
             user_data_dir=self.user_data_dir,
             headless=False,
             user_agent=user_agent,
             args=[
                 "--use-fake-ui-for-media-stream",
-                # REMOVED: --use-fake-device-for-media-stream (Major detection vector)
-                "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-infobars",
-                "--disable-dev-shm-usage",
-                # REMOVED: --disable-web-security (High detection risk)
+                "--disable-blink-features=AutomationControlled",
             ],
-            ignore_default_args=["--enable-automation"],
+            # This is critical to hide automation
+            ignore_default_args=["--enable-automation"], 
             permissions=["microphone", "camera"],
             viewport={"width": 1280, "height": 720},
         )
@@ -84,7 +77,7 @@ class GoogleMeetBot:
             
             # Wait for page to stabilize
             self._human_delay(3, 5)
-            self._safe_screenshot("debug_01_landing.png")
+
 
             # Dismiss any popups/notifications
             self._dismiss_popups()
@@ -99,14 +92,14 @@ class GoogleMeetBot:
             self._fill_name_field()
             
             self._human_delay(2, 3)
-            self._safe_screenshot("debug_02_name_filled.png")
+
 
             # Try to join meeting
             print("🚪 Attempting to join meeting...")
             join_success = self._attempt_join()
             
             if not join_success:
-                self._safe_screenshot("debug_03_join_failed.png")
+
                 raise Exception("Could not join the meeting - button not clickable or meeting restricted")
 
             # Wait and verify we're in the meeting
@@ -114,21 +107,16 @@ class GoogleMeetBot:
             if self._verify_meeting_joined():
                 self.is_connected = True
                 print("✅ Successfully joined the meeting!")
-                self._safe_screenshot("debug_04_success.png")
+                print("✅ Successfully joined the meeting!")
                 threading.Thread(target=self._maintain_presence, daemon=True).start()
             else:
                 raise Exception("Could not verify successful meeting entry")
 
         except Exception as e:
             print(f"❌ Join Error: {e}")
-            self._safe_screenshot("error_final.png")
+            print(f"❌ Join Error: {e}")
             
-            # Debug: Save page content
-            try:
-                with open("error_page_content.html", "w", encoding="utf-8") as f:
-                    f.write(self.page.content())
-            except:
-                pass
+
             
             self.leave_meeting()
             raise e
