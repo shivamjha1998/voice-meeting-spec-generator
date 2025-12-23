@@ -64,12 +64,19 @@ def main():
                             # Use lpop (non-blocking) so we don't freeze the loop
                             item = redis_client.lpop("audio_playback_queue")
                             if item:
+                                print(f"DEBUG: Found item in audio_playback_queue: {item}")
                                 playback_data = json.loads(item)
                                 # Only play if it matches current meeting (simple check)
-                                if playback_data.get("meeting_id") == meeting_id:
+                                msg_meeting_id = playback_data.get("meeting_id")
+                                print(f"DEBUG: Msg Meeting ID: {msg_meeting_id}, Current Meeting ID: {meeting_id}")
+                                
+                                if str(msg_meeting_id) == str(meeting_id):
                                     file_path = playback_data.get("file_path")
+                                    print(f"DEBUG: File Path: {file_path}")
                                     if file_path:
                                         bot.recorder.play_audio(file_path)
+                                else:
+                                    print(f"DEBUG: Meeting ID mismatch. Ignoring.")
                         except Exception as e:
                             print(f"Playback Error: {e}")
                         

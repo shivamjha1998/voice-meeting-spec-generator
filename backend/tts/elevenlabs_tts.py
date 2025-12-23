@@ -15,10 +15,10 @@ class ElevenLabsTTSClient:
         print(f"🗣️ Synthesizing speech (ElevenLabs): '{text}'")
         try:
             # Generate audio stream
-            audio_generator = self.client.generate(
+            audio_generator = self.client.text_to_speech.convert(
                 text=text,
-                voice="Rachel", 
-                model="eleven_monolingual_v1"
+                voice_id="21m00Tcm4TlvDq8ikWAM", # Rachel Voice ID
+                model_id="eleven_multilingual_v2"
             )
             
             # Save stream to file

@@ -87,6 +87,11 @@ class GoogleMeetBot:
             print("🔇 Disabling camera and microphone...")
             self._disable_media_devices()
             self._human_delay(1, 2)
+            
+            # Select BlackHole Microphone
+            print("🎤 Selecting BlackHole Microphone...")
+            self._select_blackhole_microphone()
+            self._human_delay(1, 2)
 
             # Fill in name field
             print("📝 Filling name field...")
@@ -107,6 +112,7 @@ class GoogleMeetBot:
             print("⌛ Waiting for meeting interface...")
             if self._verify_meeting_joined():
                 self.is_connected = True
+                self._unmute_microphone()
                 self._announce_presence()
                 print("✅ Successfully joined the meeting!")
             else:
@@ -117,6 +123,66 @@ class GoogleMeetBot:
             
             self.leave_meeting()
             raise e
+
+    def _select_blackhole_microphone(self):
+        """Attempts to select BlackHole 2ch as the microphone in Google Meet settings."""
+        try:
+            # 1. Open More Options (Three dots)
+            more_options = self.page.get_by_label("More options")
+            if more_options.is_visible():
+                more_options.click()
+                self._human_delay(0.5, 1)
+                
+                # 2. Click Settings
+                settings_btn = self.page.get_by_text("Settings")
+                if settings_btn.is_visible():
+                    settings_btn.click()
+                    self._human_delay(1, 2)
+                    
+                    # 3. Click Audio Tab (usually first, but good to be sure)
+                    # Often "Audio" is the default tab or labeled "Audio"
+                    audio_tab = self.page.get_by_role("tab", name="Audio")
+                    if audio_tab.is_visible():
+                        audio_tab.click()
+                        self._human_delay(0.5, 1)
+
+                    # 4. Find Microphone Dropdown
+                    # Usually labeled "Microphone" and is a button or listbox
+                    mic_label = self.page.get_by_text("Microphone")
+                    if mic_label.is_visible():
+                         # In Meet, the dropdown trigger is often nearby. 
+                         # Try clicking the current selection (which might be "Default - ...")
+                         # Strategy: look for a listbox or button in the Audio section
+                         
+                         # This is tricky as selectors change. 
+                         # Attempt to find the dropdown by aria-label or typical structure
+                         mic_dropdown = self.page.locator("div[aria-label='Microphone']").first
+                         if not mic_dropdown.is_visible():
+                              mic_dropdown = self.page.get_by_role("button", name="Microphone")
+                         
+                         if mic_dropdown.is_visible():
+                             mic_dropdown.click()
+                             self._human_delay(0.5, 1)
+                             
+                             # 5. Select BlackHole 2ch
+                             blackhole_option = self.page.get_by_text("BlackHole 2ch", exact=False).first
+                             if blackhole_option.is_visible():
+                                 blackhole_option.click()
+                                 print("✅ Selected 'BlackHole 2ch' microphone")
+                             else:
+                                 print("⚠️ 'BlackHole 2ch' not found in microphone list")
+                                 # Close dropdown if failed
+                                 self.page.keyboard.press("Escape")
+
+                    # 6. Close Settings
+                    close_btn = self.page.get_by_label("Close")
+                    if close_btn.is_visible():
+                        close_btn.click()
+            else:
+                 print("⚠️ 'More options' button not found")
+                 
+        except Exception as e:
+            print(f"⚠️ Failed to select microphone: {e}")
 
     def _dismiss_popups(self):
         """Dismiss any popups or permission requests"""
@@ -194,6 +260,24 @@ class GoogleMeetBot:
                 pass
         
         return success
+
+    def _unmute_microphone(self):
+        """Unmute the microphone after joining"""
+        print("🎤 Unmuting microphone...")
+        try:
+            # Try keyboard shortcut first (Control + d)
+            self.page.keyboard.press("Control+d")
+            self._human_delay(0.5, 1)
+            print("✅ Toggled microphone via keyboard")
+            
+            # Verify if unmuted (optional, but good for robustness)
+            # Meet microphone button usually has data-is-muted="true" or "false" or aria-label changes
+            # For now, we assume the toggle worked since we explicitly muted before joining.
+            
+        except Exception as e:
+            print(f"⚠️ Failed to unmute: {e}")
+            # Fallback to visual click if needed in future
+            pass
 
     def _disable_via_visual_search(self):
         """Try to find and click media buttons visually"""

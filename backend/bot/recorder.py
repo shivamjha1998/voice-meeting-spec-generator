@@ -18,6 +18,7 @@ class AudioRecorder:
         self.frames = []
         self.audio_queue = queue.Queue()  # For real-time streaming
         self.device_index = None
+        self.output_device_index = None
         
         # Auto-detect BlackHole on macOS
         if platform.system() == 'Darwin':  # macOS
@@ -33,18 +34,22 @@ class AudioRecorder:
             device_info = self.p.get_device_info_by_host_api_device_index(0, i)
             device_name = device_info.get('name')
             
-            # Look for BlackHole 2ch
+            # Look for BlackHole 2ch Input
             if 'BlackHole 2ch' in device_name and device_info.get('maxInputChannels') > 0:
                 self.device_index = i
-                print(f"✅ Found BlackHole 2ch at device index {i}: {device_name}")
-                print(f"   Max Input Channels: {device_info.get('maxInputChannels')}")
-                print(f"   Default Sample Rate: {device_info.get('defaultSampleRate')}")
-                return
-        
+                print(f"✅ Found BlackHole 2ch Input at index {i}")
+
+            # Look for BlackHole 2ch Output
+            if 'BlackHole 2ch' in device_name and device_info.get('maxOutputChannels') > 0:
+                self.output_device_index = i
+                print(f"✅ Found BlackHole 2ch Output at index {i}")
+
         if self.device_index is None:
-            print("⚠️ BlackHole 2ch not found. Available devices:")
+            print("⚠️ BlackHole 2ch Input not found.")
             self._list_audio_devices()
-            print("\n💡 Make sure BlackHole 2ch is installed and audio is routed to it.")
+        
+        if self.output_device_index is None:
+             print("⚠️ BlackHole 2ch Output not found (Bot voice won't be heard).")
 
     def _list_audio_devices(self):
         """List all available audio input devices"""
@@ -159,7 +164,8 @@ class AudioRecorder:
                 format=self.p.get_format_from_width(wf.getsampwidth()),
                 channels=wf.getnchannels(),
                 rate=wf.getframerate(),
-                output=True
+                output=True,
+                output_device_index=self.output_device_index
             )
 
             chunk_size = 1024

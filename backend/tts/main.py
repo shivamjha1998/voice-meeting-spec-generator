@@ -21,7 +21,7 @@ def main():
     tts_client = ElevenLabsTTSClient()
     
     # Ensure shared audio directory exists
-    AUDIO_DIR = "/app/backend/temp_audio"
+    AUDIO_DIR = os.path.join(os.getcwd(), "backend", "temp_audio")
     os.makedirs(AUDIO_DIR, exist_ok=True)
 
     print("Fn Listening for jobs on 'speak_request_queue'...")
