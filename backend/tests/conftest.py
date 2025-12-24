@@ -1,3 +1,8 @@
+import os
+
+# Inject dummy key for tests
+os.environ["ENCRYPTION_KEY"] = "Trq2q8y5W7u7Q0p4R1v9S3x6Y8z2A4b6C8d0E2f4G6h="
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
