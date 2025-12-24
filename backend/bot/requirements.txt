@@ -6,3 +6,4 @@ playwright
 playwright-stealth
 redis
 setuptools
+cryptography

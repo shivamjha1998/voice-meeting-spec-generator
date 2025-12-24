@@ -66,6 +66,7 @@ services:
       PULSE_SERVER: unix:/run/user/0/pulse/native
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
     command: python -m backend.transcription.main
     volumes:
       - .:/app
