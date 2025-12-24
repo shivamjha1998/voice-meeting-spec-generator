@@ -38,11 +38,27 @@ def main():
                 meeting_id = data.get("meeting_id")
                 
                 if text:
-                    filename = f"question_{meeting_id}_{int(time.time())}.mp3"
-                    file_path = os.path.join(AUDIO_DIR, filename)
+                    # Check if this is the standard consent announcement
+                    CONSENT_TEXT_PART = "Hello everyone, I am the AI Meeting Assistant"
+                    is_consent = CONSENT_TEXT_PART in text
                     
-                    # 1. Generate Audio
-                    output_path = tts_client.synthesize_speech(text, output_file=file_path)
+                    if is_consent:
+                        # Use a static filename for caching
+                        filename = "ai_consent.mp3"
+                        file_path = os.path.join(AUDIO_DIR, filename)
+                        
+                        # Only generate if it doesn't exist
+                        if os.path.exists(file_path):
+                            print(f"♻️ Using cached consent audio: {file_path}")
+                            output_path = file_path
+                        else:
+                            print("🆕 Generating new consent audio...")
+                            output_path = tts_client.synthesize_speech(text, output_file=file_path)
+                    else:
+                        # Dynamic/Question audio - always new
+                        filename = f"question_{meeting_id}_{int(time.time())}.mp3"
+                        file_path = os.path.join(AUDIO_DIR, filename)
+                        output_path = tts_client.synthesize_speech(text, output_file=file_path)
                     
                     if output_path:
                         # 2. Notify Bot to Play

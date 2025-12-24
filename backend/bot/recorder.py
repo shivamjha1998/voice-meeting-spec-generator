@@ -25,31 +25,64 @@ class AudioRecorder:
             self._find_blackhole_device()
 
     def _find_blackhole_device(self):
-        """Find BlackHole 2ch device on macOS"""
-        print("🔍 Searching for BlackHole 2ch device...")
+        """Find BlackHole devices on macOS - Prefer 16ch for Output to avoid echo"""
+        print("🔍 Searching for BlackHole devices...")
         info = self.p.get_host_api_info_by_index(0)
         num_devices = info.get('deviceCount')
         
+        # Reset indices
+        self.device_index = None        # Recording (Input)
+        self.output_device_index = None # Speaking (Output)
+
+        # 1. Find Recording Device (Prefer 2ch Input)
         for i in range(num_devices):
             device_info = self.p.get_device_info_by_host_api_device_index(0, i)
             device_name = device_info.get('name')
             
-            # Look for BlackHole 2ch Input
             if 'BlackHole 2ch' in device_name and device_info.get('maxInputChannels') > 0:
                 self.device_index = i
-                print(f"✅ Found BlackHole 2ch Input at index {i}")
+                print(f"✅ Found Recording Device: BlackHole 2ch Input (Index {i})")
+                break
+        
+        if self.device_index is None:
+             # Fallback to 16ch for input if 2ch missing
+            for i in range(num_devices):
+                device_info = self.p.get_device_info_by_host_api_device_index(0, i)
+                device_name = device_info.get('name')
+                if 'BlackHole 16ch' in device_name and device_info.get('maxInputChannels') > 0:
+                    self.device_index = i
+                    print(f"⚠️ BlackHole 2ch missing. Using BlackHole 16ch Input (Index {i}) for recording")
+                    break
 
-            # Look for BlackHole 2ch Output
-            if 'BlackHole 2ch' in device_name and device_info.get('maxOutputChannels') > 0:
+        # 2. Find Speaking Device (Prefer 16ch Output to split streams)
+        for i in range(num_devices):
+            device_info = self.p.get_device_info_by_host_api_device_index(0, i)
+            device_name = device_info.get('name')
+            
+            if 'BlackHole 16ch' in device_name and device_info.get('maxOutputChannels') > 0:
                 self.output_device_index = i
-                print(f"✅ Found BlackHole 2ch Output at index {i}")
+                print(f"✅ Found Speaking Device: BlackHole 16ch Output (Index {i})")
+                break
+        
+        if self.output_device_index is None:
+            # Fallback to 2ch for output (Will cause echo, but allows function)
+            for i in range(num_devices):
+                device_info = self.p.get_device_info_by_host_api_device_index(0, i)
+                device_name = device_info.get('name')
+                if 'BlackHole 2ch' in device_name and device_info.get('maxOutputChannels') > 0:
+                    self.output_device_index = i
+                    self.output_is_2ch = True
+                    print(f"⚠️ BlackHole 16ch missing. Using BlackHole 2ch Output (Index {i}) - CAUTION: MAY CAUSE ECHO")
+                    break
+        else:
+            self.output_is_2ch = False
 
         if self.device_index is None:
-            print("⚠️ BlackHole 2ch Input not found.")
+            print("⚠️ No BlackHole Input found.")
             self._list_audio_devices()
         
         if self.output_device_index is None:
-             print("⚠️ BlackHole 2ch Output not found (Bot voice won't be heard).")
+             print("⚠️ No BlackHole Output found (Bot voice won't be heard).")
 
     def _list_audio_devices(self):
         """List all available audio input devices"""
@@ -145,14 +178,35 @@ class AudioRecorder:
         
         # 1. Convert MP3 to WAV if needed
         if file_path.endswith(".mp3"):
+            # Fix for local execution: Map /app/backend to local backend
+            if file_path.startswith("/app/") and not os.path.exists(file_path):
+                local_path = file_path.replace("/app/", "")
+                # Try relative to current working directory
+                if os.path.exists(local_path):
+                    print(f"🔄 Remapped path {file_path} -> {local_path}")
+                    file_path = local_path
+                else:
+                    # Try relative to project root if running from backend/bot
+                    # Assuming we are in project root mostly, but just in case
+                    pass
+
             wav_path = file_path.replace(".mp3", ".wav")
+            
+            # Determine channels: BlackHole 2ch requires 2 channels.
+            # BlackHole 16ch also accepts 2 channels (mapped to 1-2).
+            ffmpeg_channels = "1"
+            if platform.system() == 'Darwin' and self.output_device_index is not None:
+                # Force stereo for any BlackHole device on Mac to avoid AUHAL errors
+                ffmpeg_channels = "2"
+                print(f"🍎 macOS BlackHole detected (Stereo forced): Forcing 2-channel separate audio")
+
             try:
                 # Use ffmpeg to convert
                 subprocess.run([
                     "ffmpeg", "-y", "-i", file_path, 
-                    "-ar", "44100", "-ac", "1", "-f", "wav", 
+                    "-ar", "44100", "-ac", ffmpeg_channels, "-f", "wav", 
                     wav_path
-                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                ], check=True, stdout=subprocess.DEVNULL)
             except Exception as e:
                 print(f"❌ FFmpeg conversion failed: {e}")
                 return
