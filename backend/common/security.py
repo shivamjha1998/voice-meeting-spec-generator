@@ -1,16 +1,14 @@
 import os
+import sys
 from cryptography.fernet import Fernet
 
 # Use a persistent key from ENV, or generate one (warning: data loss on restart if not set)
 KEY_ENV = os.getenv("ENCRYPTION_KEY")
 if not KEY_ENV:
-    print("⚠️  CRITICAL SECURITY WARNING: ENCRYPTION_KEY is not set.")
-    print("    - New keys will be generated on every restart.")
-    print("    - Previously encrypted data (tokens, audio) will be UNREADABLE.")
-    key = Fernet.generate_key()
-else:
-    key = KEY_ENV.encode() if isinstance(KEY_ENV, str) else KEY_ENV
+    print("❌ FATAL: ENCRYPTION_KEY is not set. Exiting to prevent data loss.")
+    sys.exit(1)
 
+key = KEY_ENV.encode() if isinstance(KEY_ENV, str) else KEY_ENV
 cipher_suite = Fernet(key)
 
 def encrypt_value(value: str) -> str:

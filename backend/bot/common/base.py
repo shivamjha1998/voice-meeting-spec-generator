@@ -57,7 +57,7 @@ class BaseBot(ABC):
             user_agent=user_agent,
             args=[
                 "--use-fake-ui-for-media-stream",
-                "--no-sandbox",
+                "--disable-dev-shm-usage",
                 "--disable-infobars",
                 "--disable-blink-features=AutomationControlled",
                 "--autoplay-policy=no-user-gesture-required"
