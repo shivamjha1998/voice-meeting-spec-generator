@@ -25,15 +25,16 @@ def main():
 
     print("📡 Listening for audio chunks on 'meeting_audio_queue'...")
     
-    # Buffer for audio chunks
     BUFFER_SIZE_BYTES = 500 * 1024
     audio_buffer = bytearray()
     
     while True:
         try:
+            # 1. Try to get data with a timeout
             item = redis_client.blpop("meeting_audio_queue", timeout=5)
             
             if item:
+                # --- DATA RECEIVED ---
                 _, data_str = item
                 data = json.loads(data_str)
                 meeting_id = data.get("meeting_id")
@@ -43,20 +44,23 @@ def main():
                     audio_bytes = base64.b64decode(audio_b64)
                     audio_buffer.extend(audio_bytes)
                     
-                    # Only process if buffer is full enough
+                    # Process if buffer is full
                     if len(audio_buffer) >= BUFFER_SIZE_BYTES:
                         print(f"🔄 Processing buffer of size {len(audio_buffer)} bytes...")
-                        
-                        # Process the buffer
                         result = stt_client.transcribe_stream(bytes(audio_buffer))
-                        
                         if result:
-                            # Group words by speaker AND push to Redis
                             process_and_save_diarized(db, redis_client, meeting_id, result)
-                        
-                        # Clear buffer
                         audio_buffer = bytearray()
-                        
+            
+            else:
+                # --- TIMEOUT (Silence/End of Stream) ---
+                if len(audio_buffer) > 0:
+                    print(f"🧹 Flushing remaining buffer of size {len(audio_buffer)} bytes...")
+                    
+                    result = stt_client.transcribe_stream(bytes(audio_buffer))
+                    
+                    audio_buffer = bytearray()
+
         except Exception as e:
             print(f"⚠️ Error processing chunk: {e}")
             time.sleep(1)

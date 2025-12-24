@@ -1,16 +1,20 @@
 import os
 from cryptography.fernet import Fernet
 
-key = os.getenv("ENCRYPTION_KEY")
-
-if not key:
-    print("⚠️ WARNING: ENCRYPTION_KEY not set. Using a temporary key (tokens will be lost on restart).")
+# Use a persistent key from ENV, or generate one (warning: data loss on restart if not set)
+KEY_ENV = os.getenv("ENCRYPTION_KEY")
+if not KEY_ENV:
+    print("⚠️  CRITICAL SECURITY WARNING: ENCRYPTION_KEY is not set.")
+    print("    - New keys will be generated on every restart.")
+    print("    - Previously encrypted data (tokens, audio) will be UNREADABLE.")
     key = Fernet.generate_key()
+else:
+    key = KEY_ENV.encode() if isinstance(KEY_ENV, str) else KEY_ENV
 
 cipher_suite = Fernet(key)
 
 def encrypt_value(value: str) -> str:
-    """Encrypts a string value."""
+    """Encrypts a string value (e.g. API tokens)."""
     if not value:
         return None
     return cipher_suite.encrypt(value.encode("utf-8")).decode("utf-8")
@@ -24,3 +28,19 @@ def decrypt_value(value: str) -> str:
     except Exception as e:
         print(f"❌ Decryption failed: {e}")
         return None
+
+def encrypt_data(data: bytes) -> bytes:
+    """Encrypts raw binary data (e.g. Audio files)."""
+    if not data:
+        return b""
+    return cipher_suite.encrypt(data)
+
+def decrypt_data(data: bytes) -> bytes:
+    """Decrypts raw binary data."""
+    if not data:
+        return b""
+    try:
+        return cipher_suite.decrypt(data)
+    except Exception as e:
+        print(f"❌ Binary Decryption failed: {e}")
+        return b""

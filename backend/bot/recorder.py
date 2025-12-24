@@ -5,6 +5,8 @@ import queue
 import subprocess
 import os
 import platform
+import io
+from backend.common.security import encrypt_data
 
 class AudioRecorder:
     def __init__(self, filename="output.wav", chunk_size=1024, format=pyaudio.paInt16, channels=1, rate=44100):
@@ -16,12 +18,11 @@ class AudioRecorder:
         self.p = pyaudio.PyAudio()
         self.is_recording = False
         self.frames = []
-        self.audio_queue = queue.Queue()  # For real-time streaming
+        self.audio_queue = queue.Queue()
         self.device_index = None
         self.output_device_index = None
         
-        # Auto-detect BlackHole on macOS
-        if platform.system() == 'Darwin':  # macOS
+        if platform.system() == 'Darwin':
             self._find_blackhole_device()
 
     def _find_blackhole_device(self):
@@ -156,16 +157,35 @@ class AudioRecorder:
             self.stream.stop_stream()
             self.stream.close()
         
-        self._save_file()
-        print(f"🛑 Recording stopped. Saved to {self.filename}")
+        self._save_file_encrypted()
+        print(f"🛑 Recording stopped. Encrypted audio saved to {self.filename}")
 
-    def _save_file(self):
-        wf = wave.open(self.filename, 'wb')
-        wf.setnchannels(self.channels)
-        wf.setsampwidth(self.p.get_sample_size(self.format))
-        wf.setframerate(self.rate)
-        wf.writeframes(b''.join(self.frames))
-        wf.close()
+    def _save_file_encrypted(self):
+        """Saves the recorded frames as an encrypted WAV file."""
+        # 1. Create the WAV in memory first
+        wav_buffer = io.BytesIO()
+        with wave.open(wav_buffer, 'wb') as wf:
+            wf.setnchannels(self.channels)
+            wf.setsampwidth(self.p.get_sample_size(self.format))
+            wf.setframerate(self.rate)
+            wf.writeframes(b''.join(self.frames))
+        
+        raw_wav_bytes = wav_buffer.getvalue()
+        
+        # 2. Encrypt the bytes
+        encrypted_bytes = encrypt_data(raw_wav_bytes)
+        
+        # 3. Write encrypted bytes to disk
+        with open(self.filename, 'wb') as f:
+            f.write(encrypted_bytes)
+
+    # Note: If you need to play back this file later, you must read -> decrypt -> play.
+    # The existing play_audio function expects a real WAV file. 
+    # If playback is required for the bot to hear itself, you might need to decrypt temporarily.
+    
+    def __del__(self):
+        if hasattr(self, 'p'):
+            self.p.terminate()
 
     def play_audio(self, file_path: str):
         """
