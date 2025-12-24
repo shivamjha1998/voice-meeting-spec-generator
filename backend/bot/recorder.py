@@ -183,9 +183,14 @@ class AudioRecorder:
     # The existing play_audio function expects a real WAV file. 
     # If playback is required for the bot to hear itself, you might need to decrypt temporarily.
     
-    def __del__(self):
+    def close(self):
+        """Explicitly release PortAudio resources."""
+        if self.is_recording:
+            self.stop_recording()
+            
         if hasattr(self, 'p'):
             self.p.terminate()
+            print("🔊 Audio system terminated.")
 
     def play_audio(self, file_path: str):
         """

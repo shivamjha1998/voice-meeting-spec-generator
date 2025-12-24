@@ -141,7 +141,7 @@ class BaseBot(ABC):
         self.is_connected = False
         
         try:
-            self.recorder.stop_recording()
+            self.recorder.close()
         except Exception as e:
             print(f"⚠️ Error stopping recorder: {e}")
         
