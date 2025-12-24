@@ -1,34 +1,12 @@
-import random
-import time
-import threading
-import os
-import redis
 import json
-import base64
-from playwright.sync_api import sync_playwright
-try:
-    from playwright_stealth import stealth_sync
-except ImportError:
-    stealth_sync = None
-    print("⚠️ playwright-stealth not available")
-
+from backend.bot.common.base import BaseBot
 from backend.bot.recorder import AudioRecorder
 
-class ZoomBot:
+class ZoomBot(BaseBot):
     def __init__(self, meeting_id=1):
-        self.meeting_id = meeting_id
-        self.playwright = None # Changed from browser to playwright for consistency
-        self.context = None
-        self.page = None
-        self.is_connected = False
+        super().__init__(meeting_id, profile_dir="google_profile")
+        # Override recorder to keep zoom_ filename convention if desired
         self.recorder = AudioRecorder(filename=f"zoom_{meeting_id}.wav")
-        self.redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
-        self.user_data_dir = os.path.join(os.getcwd(), "google_profile")
-        self.playback_thread_started = False
-
-    def _human_delay(self, min_sec=1, max_sec=3):
-        """Introduces random delays to simulate human."""
-        time.sleep(random.uniform(min_sec, max_sec))
 
     def join_meeting(self, meeting_url: str):
         """
@@ -40,43 +18,8 @@ class ZoomBot:
         if "/j/" in meeting_url:
             meeting_url = meeting_url.replace("/j/", "/wc/join/")
         
-        self.playwright = sync_playwright().start()
-        
-        user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-
-        # Launch Browser (Chromium) with Persistent Context
-        self.context = self.playwright.chromium.launch_persistent_context(
-            user_data_dir=self.user_data_dir,
-            headless=False,
-            user_agent=user_agent,
-            args=[
-                "--use-fake-ui-for-media-stream",
-                "--no-sandbox",
-                "--disable-infobars",
-                "--disable-blink-features=AutomationControlled",
-                "--autoplay-policy=no-user-gesture-required"
-            ],
-            ignore_default_args=["--enable-automation"],
-            permissions=["microphone", "camera"],
-            viewport={"width": 1280, "height": 720}
-        )
-        
-        self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
-
-        # Apply stealth if available
-        if stealth_sync:
-            try:
-                stealth_sync(self.page)
-                print("✅ Stealth applied successfully")
-            except Exception as e:
-                print(f"⚠️ Stealth error (non-critical): {e}")
-
-        # Override webdriver property
-        self.page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-        """)
+        # 1. Start Browser (handled by BaseBot)
+        self._start_browser()
         
         try:
             self.page.goto(meeting_url)
@@ -130,7 +73,7 @@ class ZoomBot:
                      if inputs.count() > 0:
                          for i in range(inputs.count()):
                              if inputs.nth(i).is_visible():
-                                 inputs.nth(i).fill("AI Assistant")
+                                 inputs.nth(i).fill("AI Meeting Assistant")
                                  print("✅ Filled name via generic input fallback")
                                  name_filled = True
                                  break
@@ -169,69 +112,7 @@ class ZoomBot:
 
         except Exception as e:
             print(f"❌ Failed to join: {e}")
-
             self.leave_meeting()
-
-    def start_audio_stream(self):
-        """Starts capturing system audio."""
-        if not self.is_connected:
-            return
-            
-        print("🎙️ Bot listening...")
-        self.recorder.start_recording()
-        
-        # Start streaming thread
-        threading.Thread(target=self._consume_stream, daemon=True).start()
-
-    def perform_maintenance(self):
-        """Called periodically by the main thread to simulate activity."""
-        if not self.is_connected:
-            return
-            
-        try:
-            # Random mouse movements (only if possible without blocking too much)
-            # Actually, blocking here for 0.1s is fine.
-            # Only do it occasionally based on time check?
-            current_time = time.time()
-            if not hasattr(self, '_last_mouse_move'):
-                self._last_mouse_move = 0
-            
-            if current_time - self._last_mouse_move > 45: # Move every ~45 seconds
-                x = random.randint(100, 1000)
-                y = random.randint(100, 600)
-                self.page.mouse.move(x, y) 
-                self._last_mouse_move = current_time
-        except Exception:
-            pass
-
-    # No longer needed as thread
-    # def start_playback_listener(self): ...
-    # def _playback_loop(self): ...
-
-    def leave_meeting(self):
-        self.is_connected = False
-        try:
-            self.recorder.stop_recording()
-        except:
-            pass
-            
-        if self.context:
-            self.context.close()
-        if hasattr(self, 'playwright'):
-            self.playwright.stop()
-        print("👋 Bot disconnected.")
-
-    def _consume_stream(self):
-        r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
-        
-        for chunk in self.recorder.stream_audio():
-            if chunk:
-                msg = {
-                    "meeting_id": self.meeting_id,
-                    "audio_data": base64.b64encode(chunk).decode('utf-8'),
-                    "timestamp": time.time()
-                }
-                r.rpush("meeting_audio_queue", json.dumps(msg))
 
     def _announce_presence(self):
         """Triggers the bot's initial voice introduction."""
@@ -245,6 +126,6 @@ class ZoomBot:
             "meeting_id": self.meeting_id,
             "text": announcement
         }
-        # Push to the TTS queue
+        # Push to the TTS queue (redis_client provided by BaseBot)
         self.redis_client.rpush("speak_request_queue", json.dumps(msg))
         print(f"📣 Presence announcement queued for Meeting {self.meeting_id}")
