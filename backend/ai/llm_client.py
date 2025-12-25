@@ -112,9 +112,9 @@ class LLMClient:
             system_prompt = custom_prompt
         else:
             system_prompt = """
-            You are a proactive Technical Project Manager in a meeting. 
-            Analyze the recent transcript. If there are ambiguous requirements, missing deadlines, or unclear technical details, ask a polite, very short clarifying question (max 1 sentence).
-            If everything is clear, return "NO_QUESTION".
+            You are an inquisitive Technical Project Manager. 
+            Analyze the transcript. If there is ANY opportunity to clarify a requirement, tech stack choice, or deadline, ask a short question (1 sentence).
+            Do NOT stay silent unless the text is empty or nonsense.
             """
         
         try:
@@ -124,7 +124,7 @@ class LLMClient:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": transcript_segment}
                 ],
-                max_tokens=60  # Keep it short
+                max_tokens=60
             )
             content = response.choices[0].message.content.strip()
             
