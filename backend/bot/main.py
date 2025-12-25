@@ -74,7 +74,14 @@ def main():
                                     file_path = playback_data.get("file_path")
                                     print(f"DEBUG: File Path: {file_path}")
                                     if file_path:
+                                        print(f"🗣️ Bot is speaking: {file_path}")
                                         bot.recorder.play_audio(file_path)
+                                        # Send signal to clear AI context
+                                        redis_client.rpush("conversation_analysis_queue", json.dumps({
+                                            "meeting_id": meeting_id,
+                                            "text": "CLEAR_BUFFER_SIGNAL", # Special flag
+                                            "speaker": "System"
+                                        }))
                                 else:
                                     print(f"DEBUG: Meeting ID mismatch. Ignoring.")
                         except Exception as e:

@@ -6,6 +6,7 @@ import subprocess
 import os
 import platform
 import io
+import time
 from backend.common.security import encrypt_data
 
 class AudioRecorder:
@@ -17,6 +18,7 @@ class AudioRecorder:
         self.rate = rate
         self.p = pyaudio.PyAudio()
         self.is_recording = False
+        self.is_running = False
         self.frames = []
         self.audio_queue = queue.Queue()
         self.device_index = None
@@ -97,6 +99,7 @@ class AudioRecorder:
 
     def start_recording(self):
         self.is_recording = True
+        self.is_running = True
         self.frames = []
         # Clear queue
         with self.audio_queue.mutex:
@@ -129,18 +132,24 @@ class AudioRecorder:
             raise
 
     def _record_loop(self):
-        while self.is_recording:
-            try:
-                data = self.stream.read(self.chunk_size, exception_on_overflow=False)
-                self.frames.append(data)
-                self.audio_queue.put(data)  # Add to queue for streaming
-            except Exception as e:
-                print(f"Error recording audio: {e}")
+        while True:
+            if not self.is_running:
                 break
+                
+            if self.is_recording:
+                try:
+                    data = self.stream.read(self.chunk_size, exception_on_overflow=False)
+                    self.frames.append(data)
+                    self.audio_queue.put(data)
+                except Exception as e:
+                    print(f"Error recording: {e}")
+                    break
+            else:
+                time.sleep(0.1)
 
     def stream_audio(self):
         """Generator that yields audio chunks in real-time."""
-        while self.is_recording or not self.audio_queue.empty():
+        while self.is_running or not self.audio_queue.empty():
             try:
                 # Get data with a small timeout to allow checking is_recording
                 chunk = self.audio_queue.get(timeout=1)
@@ -149,7 +158,10 @@ class AudioRecorder:
                 continue
 
     def stop_recording(self):
+        """Stops the thread and saves the file."""
         self.is_recording = False
+        self.is_running = False
+        
         if hasattr(self, 'thread'):
             self.thread.join(timeout=2.0)
         
@@ -200,6 +212,8 @@ class AudioRecorder:
         print(f"🔊 Playing audio: {file_path}")
         
         wav_path = file_path
+        self.pause_recording()
+        time.sleep(0.5)
         
         # 1. Convert MP3 to WAV if needed
         if file_path.endswith(".mp3"):
@@ -263,8 +277,21 @@ class AudioRecorder:
                 
         except Exception as e:
             print(f"❌ Error playing audio: {e}")
+        
+        self.resume_recording()
 
     def __del__(self):
         """Cleanup PyAudio instance"""
         if hasattr(self, 'p'):
             self.p.terminate()
+
+    def pause_recording(self):
+        """Temporarily pauses the recording stream"""
+        self.is_recording = False
+        print("⏸️  Microphone Paused (Bot Speaking)")
+
+    def resume_recording(self):
+        """Resumes the recording stream"""
+        if not self.is_recording:
+            self.is_recording = True
+            print("▶️  Microphone Resumed")
