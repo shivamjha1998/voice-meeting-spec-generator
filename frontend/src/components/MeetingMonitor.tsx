@@ -44,14 +44,21 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId, onMeetingEnd }) => {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        // The payload matches the python dict: { speaker, text, timestamp, ... }
         const newTranscript: Transcript = {
           speaker: data.speaker,
           text: data.text,
           timestamp: data.timestamp,
         };
 
-        setTranscripts((prev) => [...prev, newTranscript]);
+        setTranscripts((prev) => {
+          const exists = prev.some(
+            (t) =>
+              t.text === newTranscript.text &&
+              t.timestamp === newTranscript.timestamp
+          );
+          if (exists) return prev;
+          return [...prev, newTranscript];
+        });
       } catch (e) {
         console.error("WS Parse Error", e);
       }
