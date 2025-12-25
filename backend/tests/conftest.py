@@ -51,3 +51,15 @@ def client(db_session):
             yield c
             
     app.dependency_overrides.clear()
+
+from unittest.mock import patch
+
+@pytest.fixture
+def mock_playwright():
+    with patch("backend.bot.common.base.sync_playwright") as mock:
+        yield mock
+
+@pytest.fixture
+def mock_redis():
+    with patch("backend.bot.common.base.redis.from_url") as mock:
+        yield mock

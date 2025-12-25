@@ -83,7 +83,7 @@ class AudioConfigurator:
             print("\n✅ Audio configuration attempt finished.")
 
         except Exception as e:
-            print(f"❌ Failed to configure audio: {e}")
+            print(f" Failed to configure audio: {e}")
             # Ensure we close the dialog if stuck
             try:
                 self.page.keyboard.press("Escape")

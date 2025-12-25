@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
@@ -17,8 +17,7 @@ class Meeting(MeetingBase):
     ended_at: Optional[datetime] = None
     consent_verified_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ProjectBase(BaseModel):
     name: str
@@ -36,8 +35,7 @@ class Project(ProjectBase):
     created_at: datetime
     meetings: List[Meeting] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserBase(BaseModel):
@@ -52,8 +50,7 @@ class User(UserBase):
     id: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class TranscriptBase(BaseModel):
     speaker: str
@@ -67,8 +64,7 @@ class Transcript(TranscriptBase):
     meeting_id: int
     timestamp: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class SpecificationBase(BaseModel):
     content: str
@@ -87,8 +83,7 @@ class Specification(SpecificationBase):
     meeting_id: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class TaskBase(BaseModel):
     title: str
@@ -103,8 +98,7 @@ class Task(TaskBase):
     specification_id: int
     github_issue_number: Optional[int] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class SettingBase(BaseModel):
     key: str
@@ -115,8 +109,7 @@ class SettingCreate(SettingBase):
     pass
 
 class Setting(SettingBase):
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AudioFileBase(BaseModel):
     meeting_id: int
@@ -130,5 +123,4 @@ class AudioFile(AudioFileBase):
     id: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

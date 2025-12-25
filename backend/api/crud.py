@@ -11,7 +11,7 @@ def get_projects(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.Project).offset(skip).limit(limit).all()
 
 def create_project(db: Session, project: schemas.ProjectCreate):
-    db_project = models.Project(**project.dict())
+    db_project = models.Project(**project.model_dump())
     db.add(db_project)
     db.commit()
     db.refresh(db_project)
@@ -26,7 +26,7 @@ def delete_project(db: Session, project_id: int):
 
 def create_meeting(db: Session, meeting: schemas.MeetingCreate):
     # Prepare meeting data
-    meeting_data = meeting.dict()
+    meeting_data = meeting.model_dump()
     consent_given = meeting_data.pop("consent_verified", False)
     
     db_meeting = models.Meeting(**meeting_data)
@@ -89,7 +89,7 @@ def update_specification(db: Session, meeting_id: int, content: str):
     return spec
 
 def create_task(db: Session, task: schemas.TaskCreate):
-    db_task = models.Task(**task.dict())
+    db_task = models.Task(**task.model_dump())
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
@@ -109,14 +109,14 @@ def update_setting(db: Session, setting: schemas.SettingCreate):
         db.refresh(db_setting)
         return db_setting
     else:
-        db_setting = models.Setting(**setting.dict())
+        db_setting = models.Setting(**setting.model_dump())
         db.add(db_setting)
         db.commit()
         db.refresh(db_setting)
         return db_setting
 
 def create_audio_file(db: Session, audio_file: schemas.AudioFileCreate):
-    db_audio = models.AudioFile(**audio_file.dict())
+    db_audio = models.AudioFile(**audio_file.model_dump())
     db.add(db_audio)
     db.commit()
     db.refresh(db_audio)
