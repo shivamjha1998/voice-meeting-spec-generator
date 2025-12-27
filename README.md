@@ -105,9 +105,9 @@ You should see:
 In a new terminal window:
 
 ```bash
-# Ensure you're in the project root
 python3 -m backend.bot.main
 ```
+> **Note**: Ensure you're in the project root
 
 > **Why run the bot locally?** The bot requires access to your system's audio devices (BlackHole) and browser profile, which is easier to configure when running locally during development.
 
