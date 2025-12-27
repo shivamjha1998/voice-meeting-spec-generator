@@ -38,11 +38,17 @@ const SpecViewer: React.FC<Props> = ({
   const [editContent, setEditContent] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
+  const token = localStorage.getItem("auth_token");
+
   // Fetch Spec (Wrapped in useCallback as per your code)
   const fetchSpec = React.useCallback(async () => {
     try {
       const res = await fetch(
-        `http://localhost:8000/meetings/${meetingId}/specification`
+        `http://localhost:8000/meetings/${meetingId}/specification`, {
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      }
       );
       if (res.ok) {
         const data = await res.json();
@@ -66,7 +72,7 @@ const SpecViewer: React.FC<Props> = ({
       console.error(err);
     }
     return false;
-  }, [meetingId]);
+  }, [meetingId, token]);
 
   // Initial Load
   useEffect(() => {
@@ -105,7 +111,12 @@ const SpecViewer: React.FC<Props> = ({
     try {
       const res = await fetch(
         `http://localhost:8000/meetings/${meetingId}/generate`,
-        { method: "POST" }
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        }
       );
       if (!res.ok) throw new Error("Failed to trigger generation");
     } catch {
@@ -135,7 +146,10 @@ const SpecViewer: React.FC<Props> = ({
         `http://localhost:8000/meetings/${meetingId}/specification`,
         {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
           body: JSON.stringify({ content: editContent }),
         }
       );

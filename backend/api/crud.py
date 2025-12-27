@@ -4,25 +4,34 @@ from backend.common import models
 from backend.common.security import encrypt_value
 from . import schemas
 
+# --- Project Operations ---
+
 def get_project(db: Session, project_id: int):
     return db.query(models.Project).filter(models.Project.id == project_id).first()
 
-def get_projects(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.Project).offset(skip).limit(limit).all()
+def get_projects(db: Session, user_id: int, skip: int = 0, limit: int = 100):
+    # UPDATED: Filter by owner_id to only show the user's projects
+    return db.query(models.Project)\
+             .filter(models.Project.owner_id == user_id)\
+             .offset(skip).limit(limit).all()
 
-def create_project(db: Session, project: schemas.ProjectCreate):
-    db_project = models.Project(**project.model_dump())
+def create_project(db: Session, project: schemas.ProjectCreate, user_id: int):
+    # UPDATED: Assign the owner_id from the authenticated user
+    db_project = models.Project(**project.model_dump(), owner_id=user_id)
     db.add(db_project)
     db.commit()
     db.refresh(db_project)
     return db_project
 
 def delete_project(db: Session, project_id: int):
+    # Note: main.py handles the ownership check before calling this
     db_project = db.query(models.Project).filter(models.Project.id == project_id).first()
     if db_project:
         db.delete(db_project)
         db.commit()
     return db_project
+
+# --- Meeting Operations ---
 
 def create_meeting(db: Session, meeting: schemas.MeetingCreate):
     # Prepare meeting data
@@ -40,11 +49,17 @@ def create_meeting(db: Session, meeting: schemas.MeetingCreate):
     db.refresh(db_meeting)
     return db_meeting
 
-def get_meetings(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.Meeting).offset(skip).limit(limit).all()
+def get_meetings(db: Session, user_id: int, skip: int = 0, limit: int = 100):
+    # UPDATED: Join with Project table to filter meetings by the project owner
+    return db.query(models.Meeting)\
+             .join(models.Project)\
+             .filter(models.Project.owner_id == user_id)\
+             .offset(skip).limit(limit).all()
 
 def get_meeting(db: Session, meeting_id: int):
     return db.query(models.Meeting).filter(models.Meeting.id == meeting_id).first()
+
+# --- User Operations ---
 
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
@@ -73,6 +88,8 @@ def update_user_token(db: Session, user_id: int, new_token: str):
         db.refresh(user)
     return user
 
+# --- Transcript & Spec Operations ---
+
 def get_meeting_transcripts(db: Session, meeting_id: int):
     return db.query(models.Transcript).filter(models.Transcript.meeting_id == meeting_id).order_by(models.Transcript.timestamp).all()
 
@@ -94,6 +111,8 @@ def create_task(db: Session, task: schemas.TaskCreate):
     db.commit()
     db.refresh(db_task)
     return db_task
+
+# --- Settings & Audio ---
 
 def get_setting(db: Session, key: str):
     return db.query(models.Setting).filter(models.Setting.key == key).first()

@@ -23,10 +23,16 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId, onMeetingEnd }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcripts]);
 
+  const token = localStorage.getItem("auth_token");
+
   // Initial Fetch (History) + WebSocket Setup
   useEffect(() => {
     // 1. Fetch History first
-    fetch(`http://localhost:8000/meetings/${meetingId}/transcripts`)
+    fetch(`http://localhost:8000/meetings/${meetingId}/transcripts`, {
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    })
       .then((res) => res.json())
       .then((data) => setTranscripts(data))
       .catch((err) => console.error(err));
@@ -86,6 +92,9 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId, onMeetingEnd }) => {
     // since monitoring is automatic via WS.
     fetch(`http://localhost:8000/meetings/${meetingId}/join`, {
       method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
     })
       .then((res) => res.json())
       .then((data) => {
@@ -108,6 +117,9 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId, onMeetingEnd }) => {
         `http://localhost:8000/meetings/${meetingId}/end`,
         {
           method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
         }
       );
 
@@ -130,9 +142,8 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId, onMeetingEnd }) => {
         <h2 className="h5 mb-0 fw-bold">Live Monitor</h2>
         <div className="d-flex align-items-center">
           <span
-            className={`badge me-2 ${
-              status === "Connected" ? "bg-success" : "bg-secondary"
-            }`}
+            className={`badge me-2 ${status === "Connected" ? "bg-success" : "bg-secondary"
+              }`}
           >
             {status}
           </span>

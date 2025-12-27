@@ -10,12 +10,18 @@ const Settings: React.FC = () => {
   const [settings, setSettings] = useState<Setting[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const token = localStorage.getItem("auth_token");
+
   useEffect(() => {
     fetchSettings();
   }, []);
 
   const fetchSettings = async () => {
-    const res = await fetch("http://localhost:8000/settings/");
+    const res = await fetch("http://localhost:8000/settings/", {
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    });
     const data = await res.json();
     setSettings(data);
   };
@@ -28,7 +34,10 @@ const Settings: React.FC = () => {
     try {
       await fetch(`http://localhost:8000/settings/${key}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({ ...setting, value: newValue }),
       });
       alert("Saved!");

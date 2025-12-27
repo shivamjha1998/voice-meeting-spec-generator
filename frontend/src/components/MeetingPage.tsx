@@ -15,6 +15,8 @@ const MeetingPage: React.FC = () => {
   const [syncResult, setSyncResult] = useState<SyncResult[] | null>(null);
   const [isAutoGenerating, setIsAutoGenerating] = useState(false);
 
+  const token = localStorage.getItem("auth_token");
+
   const handleMeetingEnd = () => {
     setIsAutoGenerating(true);
   };
@@ -23,12 +25,17 @@ const MeetingPage: React.FC = () => {
     setIsPreviewingTasks(true);
     try {
       const res = await fetch(
-        `http://localhost:8000/meetings/${id}/tasks/preview`
+        `http://localhost:8000/meetings/${id}/tasks/preview`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          }
+        }
       );
       if (res.ok) {
         const data = await res.json();
         setTasks(data);
-        // Scroll to bottom ideally, but layout change might make it visible automatically
       } else {
         alert("Failed to load task preview");
       }
@@ -68,7 +75,10 @@ const MeetingPage: React.FC = () => {
         `http://localhost:8000/meetings/${id}/tasks/sync`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
           body: JSON.stringify(tasks),
         }
       );

@@ -52,8 +52,15 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
   const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
   const [startingMeeting, setStartingMeeting] = useState(false);
 
+  const token = localStorage.getItem("auth_token");
+
   const refreshProjects = () => {
-    fetch("http://localhost:8000/projects/")
+    fetch("http://localhost:8000/projects/", {
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      }
+    })
       .then((res) => res.json())
       .then((data) => setProjects(data))
       .catch((err) => console.error("Error fetching projects:", err));
@@ -63,7 +70,11 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
     refreshProjects();
 
     if (userId) {
-      fetch(`http://localhost:8000/user/repos?user_id=${userId}`)
+      fetch("http://localhost:8000/user/repos", {
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      })
         .then((res) => {
           if (res.ok) return res.json();
           throw new Error("Failed to fetch repos");
@@ -94,7 +105,10 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
     try {
       await fetch("http://localhost:8000/projects/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({
           name: newProjectName,
           description: "Project created via UI",
@@ -119,7 +133,10 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
     try {
       const res = await fetch("http://localhost:8000/meetings/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({
           project_id: activeProjectId,
           platform: meetingUrl.includes("google") ? "google_meet" : "zoom",
@@ -133,6 +150,9 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
         // Auto-join Bot
         await fetch(`http://localhost:8000/meetings/${meeting.id}/join`, {
           method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
         });
         navigate(`/meeting/${meeting.id}`);
       }

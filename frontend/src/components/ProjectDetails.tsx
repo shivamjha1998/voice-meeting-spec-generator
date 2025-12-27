@@ -20,13 +20,19 @@ const ProjectDetails: React.FC = () => {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const token = localStorage.getItem("auth_token");
+
   useEffect(() => {
-    fetch(`http://localhost:8000/projects/${projectId}`)
+    fetch(`http://localhost:8000/projects/${projectId}`, {
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    })
       .then((res) => res.json())
       .then((data) => setProject(data))
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
-  }, [projectId]);
+  }, [projectId, token]);
 
   const handleCreateMeeting = async () => {
     const url = prompt("Enter Meeting URL (Zoom/Meet):");
@@ -38,7 +44,10 @@ const ProjectDetails: React.FC = () => {
     try {
       const res = await fetch("http://localhost:8000/meetings/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({
           project_id: projectId,
           platform: platform,
@@ -48,7 +57,11 @@ const ProjectDetails: React.FC = () => {
       if (res.ok) {
         // Refresh project data to show new meeting
         const updatedProject = await fetch(
-          `http://localhost:8000/projects/${projectId}`
+          `http://localhost:8000/projects/${projectId}`, {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        }
         ).then((r) => r.json());
         setProject(updatedProject);
 
@@ -56,6 +69,9 @@ const ProjectDetails: React.FC = () => {
         const meeting = await res.json();
         fetch(`http://localhost:8000/meetings/${meeting.id}/join`, {
           method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
         }).catch(console.error);
       }
     } catch (err) {

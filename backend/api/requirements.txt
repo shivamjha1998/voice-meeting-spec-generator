@@ -12,3 +12,5 @@ requests
 pytest
 cryptography
 celery
+python-jose[cryptography]
+passlib[bcrypt]

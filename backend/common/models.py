@@ -16,7 +16,9 @@ class Project(Base):
     description = Column(Text, nullable=True)
     github_repo_url = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    owner_id = Column(Integer, ForeignKey("users.id"))
 
+    owner = relationship("User", back_populates="projects")
     meetings = relationship("Meeting", back_populates="project")
     specifications = relationship("Specification", back_populates="project")
 
@@ -81,6 +83,7 @@ class User(Base):
     avatar_url = Column(String)
     github_token = Column(String) #In prod, encrypt this!
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    projects = relationship("Project", back_populates="owner")
 
 class Setting(Base):
     __tablename__ = "settings"

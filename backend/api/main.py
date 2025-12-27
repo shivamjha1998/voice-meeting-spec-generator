@@ -4,7 +4,6 @@ import os
 import httpx
 import json
 import redis
-import redis.asyncio as redis_async
 import requests
 from fastapi import FastAPI, Depends, HTTPException, Body
 from fastapi.responses import RedirectResponse
@@ -23,6 +22,8 @@ from backend.ai.llm_client import LLMClient
 from backend.common.security import decrypt_value
 from backend.celery_app import celery_app
 from backend.ai.tasks import generate_specification_task
+# Added Auth imports
+from backend.api.auth import create_access_token, get_current_user
 
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
@@ -111,70 +112,150 @@ async def github_callback(code: str, db: Session = Depends(database.get_db)):
         )
         db_user = crud.create_user(db, new_user)
 
-    return RedirectResponse(f"http://localhost:5173?user_id={db_user.id}")
+    # Generate JWT and redirect with token
+    access_token = create_access_token(data={"sub": str(db_user.id)})
+    return RedirectResponse(f"http://localhost:5173/auth/success?token={access_token}")
 
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
 
-# Project Routes
+# --- Project Routes (Secured) ---
+
 @app.post("/projects/", response_model=schemas.Project)
-def create_project(project: schemas.ProjectCreate, db: Session = Depends(database.get_db)):
-    return crud.create_project(db=db, project=project)
+def create_project(
+    project: schemas.ProjectCreate, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # Pass user_id to ensure ownership
+    return crud.create_project(db=db, project=project, user_id=current_user.id)
 
 @app.get("/projects/", response_model=List[schemas.Project])
-def read_projects(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
-    return crud.get_projects(db, skip=skip, limit=limit)
+def read_projects(
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # Filter projects by current_user.id
+    return crud.get_projects(db, skip=skip, limit=limit, user_id=current_user.id)
 
 @app.get("/projects/{project_id}", response_model=schemas.Project)
-def read_project(project_id: int, db: Session = Depends(database.get_db)):
+def read_project(
+    project_id: int, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
     db_project = crud.get_project(db, project_id=project_id)
     if db_project is None:
         raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Authorization Check
+    if db_project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to view this project")
+        
     return db_project
 
 @app.delete("/projects/{project_id}", response_model=schemas.Project)
-def delete_project(project_id: int, db: Session = Depends(database.get_db)):
+def delete_project(
+    project_id: int, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # Check ownership before delete
+    db_project = crud.get_project(db, project_id=project_id)
+    if db_project and db_project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this project")
+
     db_project = crud.delete_project(db, project_id=project_id)
     if db_project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return db_project
 
-# Meeting Routes
+# --- Meeting Routes (Secured) ---
+
 @app.post("/meetings/", response_model=schemas.Meeting)
-def create_meeting(meeting: schemas.MeetingCreate, db: Session = Depends(database.get_db)):
+def create_meeting(
+    meeting: schemas.MeetingCreate, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # Verify the project belongs to the user before creating a meeting
+    project = crud.get_project(db, project_id=meeting.project_id)
+    if not project or project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to add meetings to this project")
+
     return crud.create_meeting(db=db, meeting=meeting)
 
 @app.get("/meetings/", response_model=List[schemas.Meeting])
-def read_meetings(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
-    return crud.get_meetings(db, skip=skip, limit=limit)
+def read_meetings(
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # Filter meetings by user_id
+    return crud.get_meetings(db, skip=skip, limit=limit, user_id=current_user.id)
 
 @app.get("/meetings/{meeting_id}", response_model=schemas.Meeting)
-def read_meeting(meeting_id: int, db: Session = Depends(database.get_db)):
-    db_meeting = crud.get_meeting(db, meeting_id=meeting_id)
-    if db_meeting is None:
-        raise HTTPException(status_code=404, detail="Meeting not found")
-    return db_meeting
-
-@app.get("/meetings/{meeting_id}/transcripts", response_model=List[schemas.Transcript])
-def read_meeting_transcripts(meeting_id: int, db: Session = Depends(database.get_db)):
-    return crud.get_meeting_transcripts(db, meeting_id=meeting_id)
-
-@app.post("/meetings/{meeting_id}/generate")
-def generate_specification(meeting_id: int, db: Session = Depends(database.get_db)):
+def read_meeting(
+    meeting_id: int, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
     meeting = crud.get_meeting(db, meeting_id=meeting_id)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
+    
+    # Authorization Check
+    if meeting.project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You do not have access to this meeting")
+        
+    return meeting
+
+@app.get("/meetings/{meeting_id}/transcripts", response_model=List[schemas.Transcript])
+def read_meeting_transcripts(
+    meeting_id: int, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # Verify Auth access via meeting
+    meeting = crud.get_meeting(db, meeting_id=meeting_id)
+    if not meeting or meeting.project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    return crud.get_meeting_transcripts(db, meeting_id=meeting_id)
+
+@app.post("/meetings/{meeting_id}/generate")
+def generate_specification(
+    meeting_id: int, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    meeting = crud.get_meeting(db, meeting_id=meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+        
+    if meeting.project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
     
     generate_specification_task.delay(meeting.id, meeting.project_id)
 
     return {"status": "queued", "message": "Specification generation started"}
 
 @app.post("/meetings/{meeting_id}/join")
-def join_meeting(meeting_id: int, db: Session = Depends(database.get_db)):
+def join_meeting(
+    meeting_id: int, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
     meeting = crud.get_meeting(db, meeting_id=meeting_id)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
+        
+    if meeting.project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
     
     try:
         redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
@@ -190,7 +271,16 @@ def join_meeting(meeting_id: int, db: Session = Depends(database.get_db)):
     return {"status": "queued", "message": "Bot join request queued"}
 
 @app.get("/meetings/{meeting_id}/specification", response_model=schemas.Specification)
-def read_meeting_specification(meeting_id: int, db: Session = Depends(database.get_db)):
+def read_meeting_specification(
+    meeting_id: int, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # Verify access first
+    meeting = crud.get_meeting(db, meeting_id=meeting_id)
+    if not meeting or meeting.project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
     spec = crud.get_meeting_specification(db, meeting_id=meeting_id)
     if not spec:
         raise HTTPException(status_code=404, detail="Specification not found")
@@ -200,8 +290,14 @@ def read_meeting_specification(meeting_id: int, db: Session = Depends(database.g
 def update_meeting_specification(
     meeting_id: int, 
     spec_update: schemas.SpecificationUpdate, 
-    db: Session = Depends(database.get_db)
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
+    # Verify access
+    meeting = crud.get_meeting(db, meeting_id=meeting_id)
+    if not meeting or meeting.project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
     # Check if exists first
     existing_spec = crud.get_meeting_specification(db, meeting_id)
     if not existing_spec:
@@ -211,8 +307,17 @@ def update_meeting_specification(
     return updated_spec
 
 @app.get("/meetings/{meeting_id}/tasks/preview")
-def preview_tasks(meeting_id: int, db: Session = Depends(database.get_db)):
+def preview_tasks(
+    meeting_id: int, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
     """Extracts tasks using AI but does not save them. Returns a list for review."""
+    # Verify access
+    meeting = crud.get_meeting(db, meeting_id=meeting_id)
+    if not meeting or meeting.project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
     spec = crud.get_meeting_specification(db, meeting_id)
     if not spec:
         raise HTTPException(status_code=404, detail="Specification not found")
@@ -230,21 +335,24 @@ async def sync_tasks_to_github(
     meeting_id: int, 
     tasks: List[schemas.TaskBase], 
     db: Session = Depends(database.get_db), 
-    user_id: int = 1
+    current_user: models.User = Depends(get_current_user)
 ):
     """
     Syncs tasks to GitHub Issues asynchronously (High Performance).
     """
-    # 1. Validation (Same as before)
+    # 1. Validation and Authorization
+    meeting = crud.get_meeting(db, meeting_id=meeting_id)
+    if not meeting or meeting.project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
     spec = crud.get_meeting_specification(db, meeting_id)
     if not spec:
         raise HTTPException(status_code=404, detail="Specification not found")
 
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user or not user.github_token:
+    if not current_user.github_token:
         raise HTTPException(status_code=400, detail="User not authenticated with GitHub")
 
-    token = decrypt_value(user.github_token)
+    token = decrypt_value(current_user.github_token)
     project = crud.get_project(db, spec.project_id)
 
     try:
@@ -316,12 +424,14 @@ async def sync_tasks_to_github(
     }
 
 @app.get("/user/repos")
-def read_user_repos(user_id: int, db: Session = Depends(database.get_db)):
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user or not user.github_token:
+def read_user_repos(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if not current_user.github_token:
         raise HTTPException(status_code=401, detail="User not authorised with GitHub")
 
-    decrypted_token = decrypt_value(user.github_token)
+    decrypted_token = decrypt_value(current_user.github_token)
 
     headers = {
         "Authorization": f"token {decrypted_token}",
@@ -341,6 +451,8 @@ def read_user_repos(user_id: int, db: Session = Depends(database.get_db)):
 
 @app.websocket("/ws/meetings/{meeting_id}")
 async def websocket_endpoint(websocket: WebSocket, meeting_id: int):
+    # Note: WebSockets are difficult to secure with Headers. 
+    # For production, pass the token in the Query Param (e.g. ?token=...) and validate here.
     await websocket.accept()
     
     # Use the global pool to create a client
@@ -369,13 +481,20 @@ async def websocket_endpoint(websocket: WebSocket, meeting_id: int):
         await r.close()
 
 @app.post("/meetings/{meeting_id}/end")
-def end_meeting(meeting_id: int, db: Session = Depends(database.get_db)):
+def end_meeting(
+    meeting_id: int, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
     """Ends the meeting, stops the bot, and triggers spec generation."""
     
     # 1. Update DB
     meeting = crud.get_meeting(db, meeting_id)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
+        
+    if meeting.project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
     
     meeting.ended_at = datetime.utcnow()
     db.commit()
@@ -389,7 +508,10 @@ def end_meeting(meeting_id: int, db: Session = Depends(database.get_db)):
     return {"status": "success", "message": "Meeting ended, bot stopped, spec generation started."}
 
 @app.get("/settings/", response_model=List[schemas.Setting])
-def read_settings(db: Session = Depends(database.get_db)):
+def read_settings(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
     settings = crud.get_settings(db)
     # Seed defaults if empty
     if not settings:
@@ -405,7 +527,12 @@ def read_settings(db: Session = Depends(database.get_db)):
     return settings
 
 @app.put("/settings/{key}", response_model=schemas.Setting)
-def update_setting(key: str, setting: schemas.SettingCreate, db: Session = Depends(database.get_db)):
+def update_setting(
+    key: str, 
+    setting: schemas.SettingCreate, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
     if key != setting.key:
          raise HTTPException(status_code=400, detail="Key mismatch")
     return crud.update_setting(db, setting)
