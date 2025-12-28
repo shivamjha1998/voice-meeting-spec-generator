@@ -33,16 +33,30 @@ def db_session():
         db.close()
         Base.metadata.drop_all(bind=engine)
 
+from backend.common import models
+from backend.api.auth import get_current_user
+
 @pytest.fixture(scope="function")
-def client(db_session):
+def test_user(db_session):
+    """Creates a test user in the database."""
+    user = models.User(
+        email="test@example.com",
+        username="testuser",
+        github_token="dummy_encrypted_token"
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+@pytest.fixture(scope="function")
+def client(db_session, test_user):
     """Override the get_db dependency and patch the engine to use our test database."""
     def override_get_db():
-        try:
-            yield db_session
-        finally:
-            db_session.close()
+        yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = lambda: test_user
     
     # Patch the engine so lifespan uses the test engine
     from unittest.mock import patch
