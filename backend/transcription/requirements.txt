@@ -1,2 +1,8 @@
 redis
 elevenlabs>=1.50.0
+openai-whisper
+torch
+numpy
+scipy
+sqlalchemy
+psycopg2-binary
