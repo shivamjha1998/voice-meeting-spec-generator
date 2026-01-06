@@ -65,6 +65,7 @@ POSTGRES_USER=user
 POSTGRES_PASSWORD=password
 POSTGRES_DB=voice_meeting_db
 DATABASE_URL=postgresql://user:password@db:5432/voice_meeting_db
+TRANSCRIPTION_PROVIDER=elevenlabs
 
 # Redis
 REDIS_URL=redis://redis:6379/0
@@ -128,6 +129,33 @@ python3 -m backend.bot.main
 > **Note**: Ensure you're in the project root
 
 > **Why run the bot locally?** The bot requires access to your system's audio devices (BlackHole) and browser profile, which is easier to configure when running locally during development.
+
+### Step 2.5: (Optional) Run Transcription Locally with Whisper
+
+If you prefer to use **OpenAI Whisper** running locally on your GPU (instead of ElevenLabs API), follow these steps:
+
+1. **Configure Environment**:
+   - Add/Update to your `.env` file:
+     ```env
+     TRANSCRIPTION_PROVIDER=whisper_local
+     ```
+
+2. **Stop Docker Service**:
+   ```bash
+   docker compose stop transcription
+   ```
+
+3. **Install Dependencies**:
+   ```bash
+   pip install -r backend/transcription/requirements.txt
+   ```
+   *(Requires Python 3.9+ installed locally)*
+
+4. **Run Service**:
+   ```bash
+   python3 -m backend.transcription.main
+   ```
+   > **Mac M-Series Users**: This will automatically detect and use your GPU (MPS) for faster processing.
 
 ### Step 3: Start Frontend
 
