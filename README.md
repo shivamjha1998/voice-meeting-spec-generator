@@ -26,6 +26,17 @@ Before running the project, ensure you have the following installed:
 
 ### For Local Bot Development (macOS)
 
+- **PortAudio**: Required for PyAudio
+
+```bash
+    brew install portaudio
+```
+
+- **FFmpeg**: Required for audio recording
+```bash
+    brew install ffmpeg
+```
+
 - **BlackHole Audio Driver**: Required for audio routing
 
 ```bash
