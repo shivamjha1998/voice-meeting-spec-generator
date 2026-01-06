@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 
 interface Transcript {
-  id?: number; // Optional now as live updates might not have ID immediately if we don't return it from publish
+  id?: number;
   speaker: string;
   text: string;
   timestamp: string | number;
@@ -38,7 +38,7 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId, onMeetingEnd }) => {
       .catch((err) => console.error(err));
 
     // 2. Setup WebSocket
-    const wsUrl = `ws://localhost:8000/ws/meetings/${meetingId}`;
+    const wsUrl = `ws://localhost:8000/ws/meetings/${meetingId}?token=${token}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -88,8 +88,6 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId, onMeetingEnd }) => {
   }, [meetingId]);
 
   const toggleMonitoring = () => {
-    // This button now mostly just triggers the BOT join,
-    // since monitoring is automatic via WS.
     fetch(`http://localhost:8000/meetings/${meetingId}/join`, {
       method: "POST",
       headers: {
