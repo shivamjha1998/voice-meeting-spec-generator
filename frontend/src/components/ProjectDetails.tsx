@@ -4,6 +4,7 @@ import { Card, Button, ListGroup, Badge, Spinner } from "react-bootstrap";
 
 interface Meeting {
   id: number;
+  name?: string;
   platform: string;
   started_at: string;
 }
@@ -35,6 +36,7 @@ const ProjectDetails: React.FC = () => {
   }, [projectId, token]);
 
   const handleCreateMeeting = async () => {
+    const name = prompt("Enter Meeting Name (Optional, e.g. Kickoff):");
     const url = prompt("Enter Meeting URL (Zoom/Meet):");
     if (!url) return;
 
@@ -50,6 +52,7 @@ const ProjectDetails: React.FC = () => {
         },
         body: JSON.stringify({
           project_id: projectId,
+          name: name || `Meeting ${new Date().toLocaleString()}`,
           platform: platform,
           meeting_url: url,
         }),
@@ -120,7 +123,9 @@ const ProjectDetails: React.FC = () => {
               >
                 <div>
                   <div className="d-flex align-items-center gap-2">
-                    <h5 className="mb-0">Meeting #{meeting.id}</h5>
+                    <h5 className="mb-0">
+                      {meeting.name || `Meeting #${meeting.id}`}
+                    </h5>
                     <Badge
                       bg={meeting.platform === "zoom" ? "primary" : "warning"}
                     >

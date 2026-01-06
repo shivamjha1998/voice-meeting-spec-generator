@@ -15,6 +15,7 @@ import {
 interface Meeting {
   id: number;
   project_id: number;
+  name?: string;
   platform: string;
   started_at: string;
 }
@@ -48,6 +49,7 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
   // --- Consent Flow variables ---
   const [showMeetingModal, setShowMeetingModal] = useState(false);
   const [meetingUrl, setMeetingUrl] = useState("");
+  const [meetingName, setMeetingName] = useState("");
   const [consentChecked, setConsentChecked] = useState(false);
   const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
   const [startingMeeting, setStartingMeeting] = useState(false);
@@ -90,6 +92,7 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
   const handleOpenMeetingModal = (projectId: number) => {
     setActiveProjectId(projectId);
     setMeetingUrl("");
+    setMeetingName("");
     setConsentChecked(false);
     setShowMeetingModal(true);
   };
@@ -139,6 +142,7 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
         },
         body: JSON.stringify({
           project_id: activeProjectId,
+          name: meetingName || `Meeting ${new Date().toLocaleString()}`,
           platform: meetingUrl.includes("google") ? "google_meet" : "zoom",
           meeting_url: meetingUrl,
           consent_verified: consentChecked,
@@ -224,6 +228,16 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
         </Modal.Header>
         <Modal.Body>
           <Form.Group className="mb-3">
+            <Form.Label>Meeting Name (Optional)</Form.Label>
+            <Form.Control
+              type="text"
+              placeholder="e.g. Kickoff, Weekly Sync"
+              value={meetingName}
+              onChange={(e) => setMeetingName(e.target.value)}
+            />
+          </Form.Group>
+
+          <Form.Group className="mb-3">
             <Form.Label>Meeting URL (Zoom or Google Meet)</Form.Label>
             <Form.Control
               type="url"
@@ -296,14 +310,20 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
                   >
                     Recent Meetings
                   </h6>
-                  <ListGroup variant="flush" className="small">
+                  <ListGroup
+                    variant="flush"
+                    className="small"
+                    style={{ maxHeight: "200px", overflowY: "auto" }}
+                  >
                     {project.meetings && project.meetings.length > 0 ? (
-                      project.meetings.slice(0, 3).map((m) => (
+                      project.meetings.map((m) => (
                         <ListGroup.Item
                           key={m.id}
                           className="d-flex justify-content-between align-items-center px-0 py-1 border-0"
                         >
-                          <span>Meeting #{m.id}</span>
+                          <span className="text-truncate" style={{ maxWidth: "150px" }} title={m.name || `Meeting #${m.id}`}>
+                            {m.name || `Meeting #${m.id}`}
+                          </span>
                           <Link
                             to={`/meeting/${m.id}`}
                             className="text-decoration-none fw-bold"

@@ -27,6 +27,7 @@ class Meeting(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"))
+    name = Column(String, nullable=True)
     platform = Column(Enum(MeetingPlatform))
     meeting_url = Column(String)
     started_at = Column(DateTime(timezone=True), nullable=True)

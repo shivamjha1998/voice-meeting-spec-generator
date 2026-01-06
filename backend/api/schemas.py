@@ -3,6 +3,7 @@ from typing import Optional, List
 from datetime import datetime
 
 class MeetingBase(BaseModel):
+    name: Optional[str] = None
     meeting_url: str
     platform: str
     consent_verified: bool = False
