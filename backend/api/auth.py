@@ -27,15 +27,22 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    user = validate_token(token, db)
+    if user is None:
+        raise credentials_exception
+    return user
+
+def validate_token(token: str, db: Session) -> Optional[models.User]:
+    """
+    Manually validates a token and returns the user.
+    """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
         if user_id is None:
-            raise credentials_exception
+            return None
     except JWTError:
-        raise credentials_exception
+        return None
         
     user = db.query(models.User).filter(models.User.id == user_id).first()
-    if user is None:
-        raise credentials_exception
     return user

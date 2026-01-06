@@ -5,11 +5,14 @@ import httpx
 import json
 import redis
 import requests
-from fastapi import FastAPI, Depends, HTTPException, Body
+import uuid
+from fastapi import FastAPI, Depends, HTTPException, Body, Query, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from typing import List
 from dotenv import load_dotenv
+from pydantic import BaseModel
+
 load_dotenv()
 
 from backend.common import models, database
@@ -22,8 +25,8 @@ from backend.ai.llm_client import LLMClient
 from backend.common.security import decrypt_value
 from backend.celery_app import celery_app
 from backend.ai.tasks import generate_specification_task
-# Added Auth imports
-from backend.api.auth import create_access_token, get_current_user
+# Added validate_token
+from backend.api.auth import create_access_token, get_current_user, validate_token
 
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
@@ -79,18 +82,18 @@ async def github_callback(code: str, db: Session = Depends(database.get_db)):
     if "error" in token_data:
         raise HTTPException(status_code=400, detail=token_data.get("error_description"))
     
-    access_token = token_data["access_token"]
+    gh_access_token = token_data["access_token"]
 
     async with httpx.AsyncClient() as client:
         user_res = await client.get(
             "https://api.github.com/user",
-            headers={"Authorization": f"Bearer {access_token}"}
+            headers={"Authorization": f"Bearer {gh_access_token}"}
         )
         user_data = user_res.json()
         
         email_res = await client.get(
             "https://api.github.com/user/emails",
-            headers={"Authorization": f"Bearer {access_token}"}
+            headers={"Authorization": f"Bearer {gh_access_token}"}
         )
         emails = email_res.json()
         primary_email = next((e["email"] for e in emails if e["primary"]), None)
@@ -102,19 +105,49 @@ async def github_callback(code: str, db: Session = Depends(database.get_db)):
     existing_user = crud.get_user_by_email(db, email=user_email)
     
     if existing_user:
-        db_user = crud.update_user_token(db, existing_user.id, access_token)
+        db_user = crud.update_user_token(db, existing_user.id, gh_access_token)
     else:
         new_user = schemas.UserCreate(
             email=user_email,
             username=user_data.get("login"),
             avatar_url=user_data.get("avatar_url"),
-            github_token=access_token
+            github_token=gh_access_token
         )
         db_user = crud.create_user(db, new_user)
 
-    # Generate JWT and redirect with token
-    access_token = create_access_token(data={"sub": str(db_user.id)})
-    return RedirectResponse(f"http://localhost:5173/auth/success?token={access_token}")
+    # Generate JWT
+    jwt_token = create_access_token(data={"sub": str(db_user.id)})
+
+    # SECURITY FIX: Do not send token in URL. Use a short-lived code exchange.
+    auth_code = str(uuid.uuid4())
+    
+    # Store JWT in Redis with 60s expiration
+    r = redis_async.Redis(connection_pool=redis_pool)
+    await r.setex(f"auth_code:{auth_code}", 60, jwt_token)
+    await r.close()
+
+    return RedirectResponse(f"http://localhost:5173/auth/success?code={auth_code}")
+
+class TokenExchangeRequest(BaseModel):
+    code: str
+
+@app.post("/auth/exchange")
+async def exchange_token(request: TokenExchangeRequest):
+    """Exchanges a short-lived auth code for a JWT."""
+    r = redis_async.Redis(connection_pool=redis_pool)
+    
+    # Retrieve token
+    token_bytes = await r.get(f"auth_code:{request.code}")
+    
+    if not token_bytes:
+        await r.close()
+        raise HTTPException(status_code=400, detail="Invalid or expired authentication code")
+    
+    # Delete code (One-time use)
+    await r.delete(f"auth_code:{request.code}")
+    await r.close()
+    
+    return {"access_token": token_bytes.decode("utf-8")}
 
 @app.get("/health")
 def health_check():
@@ -128,7 +161,6 @@ def create_project(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # Pass user_id to ensure ownership
     return crud.create_project(db=db, project=project, user_id=current_user.id)
 
 @app.get("/projects/", response_model=List[schemas.Project])
@@ -138,7 +170,6 @@ def read_projects(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # Filter projects by current_user.id
     return crud.get_projects(db, skip=skip, limit=limit, user_id=current_user.id)
 
 @app.get("/projects/{project_id}", response_model=schemas.Project)
@@ -151,7 +182,6 @@ def read_project(
     if db_project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    # Authorization Check
     if db_project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to view this project")
         
@@ -163,7 +193,6 @@ def delete_project(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # Check ownership before delete
     db_project = crud.get_project(db, project_id=project_id)
     if db_project and db_project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to delete this project")
@@ -181,7 +210,6 @@ def create_meeting(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # Verify the project belongs to the user before creating a meeting
     project = crud.get_project(db, project_id=meeting.project_id)
     if not project or project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to add meetings to this project")
@@ -195,7 +223,6 @@ def read_meetings(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # Filter meetings by user_id
     return crud.get_meetings(db, skip=skip, limit=limit, user_id=current_user.id)
 
 @app.get("/meetings/{meeting_id}", response_model=schemas.Meeting)
@@ -208,7 +235,6 @@ def read_meeting(
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
     
-    # Authorization Check
     if meeting.project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="You do not have access to this meeting")
         
@@ -220,7 +246,6 @@ def read_meeting_transcripts(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # Verify Auth access via meeting
     meeting = crud.get_meeting(db, meeting_id=meeting_id)
     if not meeting or meeting.project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
@@ -276,7 +301,6 @@ def read_meeting_specification(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # Verify access first
     meeting = crud.get_meeting(db, meeting_id=meeting_id)
     if not meeting or meeting.project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
@@ -293,12 +317,10 @@ def update_meeting_specification(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # Verify access
     meeting = crud.get_meeting(db, meeting_id=meeting_id)
     if not meeting or meeting.project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    # Check if exists first
     existing_spec = crud.get_meeting_specification(db, meeting_id)
     if not existing_spec:
         raise HTTPException(status_code=404, detail="Specification not found")
@@ -312,8 +334,6 @@ def preview_tasks(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Extracts tasks using AI but does not save them. Returns a list for review."""
-    # Verify access
     meeting = crud.get_meeting(db, meeting_id=meeting_id)
     if not meeting or meeting.project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
@@ -337,10 +357,6 @@ async def sync_tasks_to_github(
     db: Session = Depends(database.get_db), 
     current_user: models.User = Depends(get_current_user)
 ):
-    """
-    Syncs tasks to GitHub Issues asynchronously (High Performance).
-    """
-    # 1. Validation and Authorization
     meeting = crud.get_meeting(db, meeting_id=meeting_id)
     if not meeting or meeting.project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
@@ -366,7 +382,6 @@ async def sync_tasks_to_github(
         "Accept": "application/vnd.github.v3+json"
     }
 
-    # 2. Define Async Worker for a single task
     async def create_issue(client, task_data):
         issue_body = {
             "title": task_data.title,
@@ -385,27 +400,22 @@ async def sync_tasks_to_github(
                     "title": task_data.title,
                     "github_number": gh_data.get("number"),
                     "url": gh_data.get("html_url"),
-                    "task_data": task_data # Return original data to save to DB
+                    "task_data": task_data
                 }
             else:
                 return {"success": False, "title": task_data.title, "error": f"HTTP {res.status_code}"}
         except Exception as e:
             return {"success": False, "title": task_data.title, "error": str(e)}
 
-    # 3. Run all requests in parallel
     async with httpx.AsyncClient() as client:
-        # Create a list of coroutines
         coroutines = [create_issue(client, task) for task in tasks]
-        # execute them
         results_list = await asyncio.gather(*coroutines)
 
-    # 4. Process results and Save to DB (Sync DB operations)
     final_results = []
     success_count = 0
 
     for res in results_list:
         if res["success"]:
-            # DB Write
             db_task = schemas.TaskCreate(
                 specification_id=spec.id,
                 title=res["task_data"].title,
@@ -449,20 +459,35 @@ def read_user_repos(
         for r in repos
     ]
 
+# SECURITY FIX: Added token authentication to WebSocket
 @app.websocket("/ws/meetings/{meeting_id}")
-async def websocket_endpoint(websocket: WebSocket, meeting_id: int):
-    # Note: WebSockets are difficult to secure with Headers. 
-    # For production, pass the token in the Query Param (e.g. ?token=...) and validate here.
+async def websocket_endpoint(
+    websocket: WebSocket, 
+    meeting_id: int, 
+    token: str = Query(..., description="JWT Access Token"),
+    db: Session = Depends(database.get_db)
+):
+    # 1. Authenticate
+    user = validate_token(token, db)
+    if not user:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid Token")
+        return
+
+    # 2. Authorize (Check project ownership)
+    meeting = crud.get_meeting(db, meeting_id)
+    if not meeting or meeting.project.owner_id != user.id:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Unauthorized")
+        return
+
     await websocket.accept()
     
-    # Use the global pool to create a client
     r = redis_async.Redis(connection_pool=redis_pool)
     pubsub = r.pubsub()
     
     channel_name = f"meeting_{meeting_id}_updates"
     await pubsub.subscribe(channel_name)
     
-    print(f"🟢 WS Connected: {channel_name}")
+    print(f"🟢 WS Connected: {channel_name} (User: {user.email})")
 
     try:
         while True:
@@ -486,9 +511,6 @@ def end_meeting(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Ends the meeting, stops the bot, and triggers spec generation."""
-    
-    # 1. Update DB
     meeting = crud.get_meeting(db, meeting_id)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
@@ -502,7 +524,6 @@ def end_meeting(
     redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
     redis_client.set(f"stop_meeting_{meeting_id}", "true")
     
-    # 2. Trigger Celery Task
     generate_specification_task.delay(meeting.id, meeting.project_id)
 
     return {"status": "success", "message": "Meeting ended, bot stopped, spec generation started."}
@@ -513,7 +534,6 @@ def read_settings(
     current_user: models.User = Depends(get_current_user)
 ):
     settings = crud.get_settings(db)
-    # Seed defaults if empty
     if not settings:
         defaults = [
             {"key": "spec_prompt", "value": "Create a detailed technical specification based on this summary. Include: 1. Overview 2. Functional Requirements 3. Database Schema.", "description": "Prompt used to generate the final specification"},
