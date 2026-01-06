@@ -44,9 +44,16 @@ Before running the project, ensure you have the following installed:
 ```
 
 - **System Audio Configuration**:
-  - Open Audio MIDI Setup
-  - Create a Multi-Output Device combining your speakers and BlackHole 2ch
-  - Create an Aggregate Device combining BlackHole 2ch (input) and BlackHole 16ch (output)
+  1. Open **Audio MIDI Setup** (Cmd+Space, type "Audio MIDI Setup").
+  2. **Create a Multi-Output Device**:
+     - Click the `+` icon in the bottom left -> **Create Multi-Output Device**.
+     - Check both **BlackHole 2ch** and your **Main Speakers** (or Headphones).
+     - Check "Drift Correction" for BlackHole 2ch.
+     - *Purpose: This allows you to hear the meeting audio while the bot also captures it.*
+  3. **Manual Device Selection**:
+     - If the speaker and microphone are not set automatically, explicitly set them:
+       - **Speaker (Output)**: Set to **BlackHole 2ch**.
+       - **Microphone (Input)**: Set to **BlackHole 16ch**.
 
 ## Configuration
 
