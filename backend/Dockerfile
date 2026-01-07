@@ -43,6 +43,7 @@ COPY backend/transcription/requirements.txt /tmp/transcription_reqs.txt
 
 RUN pip install --no-cache-dir -r /tmp/api_reqs.txt
 RUN pip install --no-cache-dir -r /tmp/bot_reqs.txt
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r /tmp/transcription_reqs.txt
 RUN pip install --no-cache-dir google-cloud-texttospeech cryptography celery
 RUN playwright install --with-deps chromium

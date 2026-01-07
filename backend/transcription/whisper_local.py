@@ -1,7 +1,4 @@
-import whisper
 import os
-import torch
-import numpy as np
 import tempfile
 import wave
 
@@ -16,6 +13,15 @@ class WhisperLocalResult:
 class WhisperLocalClient:
     def __init__(self, model_size="base"):
         print(f"📥 Loading Whisper model ('{model_size}')...")
+
+        try:
+            import torch
+            import whisper
+        except ImportError:
+            print("❌ Error: 'openai-whisper' and 'torch' are not installed.")
+            print("   To use local transcription, install them manually:")
+            print("   pip install openai-whisper torch")
+            raise ImportError("Missing dependencies for whisper_local provider")
         
         # 1. Detect Hardware
         device = "cpu"

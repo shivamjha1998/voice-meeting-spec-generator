@@ -8,7 +8,6 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 import redis
 from backend.transcription.elevenlabs_client import ElevenLabsClient
-from backend.transcription.whisper_local import WhisperLocalClient
 from backend.common import database, models
 from sqlalchemy.orm import Session
 
@@ -30,6 +29,7 @@ def main():
     # --- CLIENT SELECTION LOGIC ---
     if TRANSCRIPTION_PROVIDER == "whisper_local":
         print("📥 Initializing Local Whisper Client...")
+        from backend.transcription.whisper_local import WhisperLocalClient
         stt_client = WhisperLocalClient(model_size="base")
     else:
         print("☁️ Initializing ElevenLabs Client...")

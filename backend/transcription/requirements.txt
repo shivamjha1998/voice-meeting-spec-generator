@@ -1,8 +1,8 @@
 redis
 elevenlabs>=1.50.0
-openai-whisper
-torch
-numpy
+# Only install if you want to use OpenAI Whisper
+# openai-whisper
+# torch
 scipy
 sqlalchemy
 psycopg2-binary
