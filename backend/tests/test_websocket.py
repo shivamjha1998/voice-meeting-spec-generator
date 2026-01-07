@@ -31,10 +31,23 @@ def test_websocket_connection(client):
         return None
     mock_redis_instance.close.side_effect = async_close
     
-    # We need to patch the Redis class used in the endpoint
+    # Mock Redis class
     with patch("backend.api.main.redis_async.Redis", return_value=mock_redis_instance):
-        with client.websocket_connect("/ws/meetings/1") as websocket:
-            # The endpoint waits for a message. 
-            # Our mock yields one immediately.
-            data = websocket.receive_text()
-            assert "Hello" in data
+        # Mock auth token validation
+        mock_user = MagicMock()
+        mock_user.id = 1
+        mock_user.email = "test@example.com"
+        
+        # Mock meeting retrieval for authorization check
+        mock_meeting = MagicMock()
+        mock_meeting.id = 1
+        mock_meeting.project.owner_id = 1
+        
+        with patch("backend.api.main.validate_token", return_value=mock_user), \
+             patch("backend.api.main.crud.get_meeting", return_value=mock_meeting):
+            
+            with client.websocket_connect("/ws/meetings/1?token=test_token") as websocket:
+                # The endpoint waits for a message. 
+                # Our mock yields one immediately.
+                data = websocket.receive_text()
+                assert "Hello" in data
