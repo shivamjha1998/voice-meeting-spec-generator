@@ -56,7 +56,7 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
 
   const token = localStorage.getItem("auth_token");
 
-  const refreshProjects = () => {
+  const refreshProjects = React.useCallback(() => {
     fetch("http://localhost:8000/projects/", {
       headers: {
         "Content-Type": "application/json",
@@ -66,7 +66,7 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
       .then((res) => res.json())
       .then((data) => setProjects(data))
       .catch((err) => console.error("Error fetching projects:", err));
-  };
+  }, [token]);
 
   useEffect(() => {
     refreshProjects();
@@ -87,7 +87,7 @@ const Dashboard: React.FC<Props> = ({ userId }) => {
         })
         .catch((err) => console.error(err));
     }
-  }, [userId]);
+  }, [userId, refreshProjects, token]);
 
   const handleOpenMeetingModal = (projectId: number) => {
     setActiveProjectId(projectId);

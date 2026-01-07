@@ -85,7 +85,7 @@ const MeetingMonitor: React.FC<Props> = ({ meetingId, onMeetingEnd }) => {
         ws.close();
       }
     };
-  }, [meetingId]);
+  }, [meetingId, token]);
 
   const toggleMonitoring = () => {
     fetch(`http://localhost:8000/meetings/${meetingId}/join`, {

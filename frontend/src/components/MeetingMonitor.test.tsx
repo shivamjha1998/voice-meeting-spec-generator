@@ -3,7 +3,16 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import MeetingMonitor from './MeetingMonitor';
 
 describe('MeetingMonitor Component', () => {
-    let mockWs: any;
+    // Use unknown or specific function types to avoid 'any'
+    let mockWs: {
+        close: ReturnType<typeof vi.fn>;
+        send: ReturnType<typeof vi.fn>;
+        readyState: number;
+        onopen?: (event: unknown) => void;
+        onmessage?: (event: { data: string }) => void;
+        onerror?: (event: unknown) => void;
+        onclose?: (event: unknown) => void;
+    };
 
     beforeEach(() => {
         // Mock Fetch for initial transcripts
@@ -23,7 +32,7 @@ describe('MeetingMonitor Component', () => {
         // Intercept WebSocket constructor
         globalThis.WebSocket = vi.fn(function () {
             return mockWs;
-        }) as any;
+        }) as unknown as typeof WebSocket;
     });
 
     afterEach(() => {
@@ -43,7 +52,7 @@ describe('MeetingMonitor Component', () => {
         render(<MeetingMonitor meetingId={1} />);
 
         // Simulate WebSocket open
-        mockWs.onopen();
+        mockWs.onopen?.({} as unknown);
 
         // Simulate incoming message
         const wsMessage = {
@@ -56,7 +65,7 @@ describe('MeetingMonitor Component', () => {
         await waitFor(() => expect(mockWs.onmessage).toBeDefined());
 
         // Fire the event
-        mockWs.onmessage({ data: JSON.stringify(wsMessage) });
+        mockWs.onmessage?.({ data: JSON.stringify(wsMessage) });
 
         await waitFor(() => {
             expect(screen.getByText('This is a live update')).toBeInTheDocument();

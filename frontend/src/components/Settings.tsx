@@ -13,18 +13,18 @@ const Settings: React.FC = () => {
   const token = localStorage.getItem("auth_token");
 
   useEffect(() => {
-    fetchSettings();
-  }, []);
+    const fetchSettings = async () => {
+      const res = await fetch("http://localhost:8000/settings/", {
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      setSettings(data);
+    };
 
-  const fetchSettings = async () => {
-    const res = await fetch("http://localhost:8000/settings/", {
-      headers: {
-        "Authorization": `Bearer ${token}`
-      }
-    });
-    const data = await res.json();
-    setSettings(data);
-  };
+    fetchSettings();
+  }, [token]);
 
   const handleSave = async (key: string, newValue: string) => {
     const setting = settings.find((s) => s.key === key);
