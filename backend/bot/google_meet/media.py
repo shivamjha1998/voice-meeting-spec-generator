@@ -85,33 +85,52 @@ class MediaController:
 
     def unmute_microphone(self):
         """Unmute the microphone after joining - cross-platform"""
-        print("🎤 Initial microphone unmute...")
+        print("🎤 Unmuting microphone...")
         try:
-            # Wait for UI to be ready
-            self.bot._human_delay(1, 2)
+            self.bot._human_delay(0.5, 1)
             
-            # Check current state (Optional debug)
             try:
                 mic_button = self.page.locator('button[aria-label*="microphone" i]').first
-                label = mic_button.get_attribute("aria-label") or ""
-                print(f"🎤 Current mic state: {label}")
+                if mic_button.is_visible(timeout=2000):
+                    label = mic_button.get_attribute("aria-label") or ""
+                    # If label says "Turn off microphone", it is ALREADY UNMUTED
+                    if "turn off" in label.lower() or "mute" in label.lower():
+                        if "turn off" in label.lower():
+                            print("✅ Already unmuted (based on label). Skipping toggle.")
+                            return
             except:
                 pass
-            
+
             # Toggle microphone - works on Mac, Windows, and Linux
             self.page.keyboard.press(f"{self.bot.modifier_key}+d")
             self.bot._human_delay(1, 1.5)
-            
-            # Verify new state
-            try:
-                mic_button = self.page.locator('button[aria-label*="microphone" i]').first
-                new_label = mic_button.get_attribute("aria-label") or ""
-                print(f"✅ Mic toggled. New state: {new_label}")
-            except:
-                print("✅ Microphone toggle command sent")
-                
+            print("✅ Unmute command sent")
         except Exception as e:
             print(f"⚠️ Failed to unmute: {e}")
+
+    def mute_microphone(self):
+        """Mute the microphone - cross-platform"""
+        print("🔇 Muting microphone...")
+        try:
+            self.bot._human_delay(0.5, 1)
+            
+            try:
+                mic_button = self.page.locator('button[aria-label*="microphone" i]').first
+                if mic_button.is_visible(timeout=2000):
+                    label = mic_button.get_attribute("aria-label") or ""
+                    # If label says "Turn on microphone", it is ALREADY MUTED
+                    if "turn on" in label.lower() or "unmute" in label.lower():
+                         print("✅ Already muted (based on label). Skipping toggle.")
+                         return
+            except:
+                pass
+
+            # Toggle microphone - works on Mac, Windows, and Linux
+            self.page.keyboard.press(f"{self.bot.modifier_key}+d")
+            self.bot._human_delay(1, 1.5)
+            print("✅ Mute command sent")
+        except Exception as e:
+            print(f"⚠️ Failed to mute: {e}")
 
     def ensure_unmuted(self):
         """Verifies microphone status and unmutes if necessary before speaking - cross-platform"""
@@ -127,7 +146,6 @@ class MediaController:
                 mic_button = self.page.locator('button[aria-label*="microphone" i]').first
                 if mic_button.is_visible(timeout=3000):
                     label = mic_button.get_attribute("aria-label") or ""
-                    # print(f"🎤 Microphone button label: {label}")
                     
                     # If label contains "Turn on" or "unmute", bot is muted
                     if "turn on" in label.lower() or "unmute" in label.lower():
@@ -136,7 +154,6 @@ class MediaController:
                         self.bot._human_delay(1, 2)
                         unmuted = True
                     else:
-                        # print("✅ Bot appears to be unmuted (via label check)")
                         unmuted = True
             except Exception as e:
                 print(f"⚠️ Strategy 1 failed: {e}")
@@ -157,7 +174,6 @@ class MediaController:
             # Strategy 3: Just toggle with keyboard shortcut to be safe
             if not unmuted:
                 print("🎤 Forcing unmute with keyboard shortcut...")
-                # Press twice to ensure we end up unmuted (toggle off then on if needed)
                 self.page.keyboard.press(f"{self.bot.modifier_key}+d")
                 self.bot._human_delay(0.5, 1)
                 
@@ -178,7 +194,6 @@ class MediaController:
             
             # Final verification checks
             self.bot._human_delay(1, 1.5)
-            # (We could raise warning here if still muted, but we proceed)
 
         except Exception as e:
             print(f"❌ Error in unmute process: {e}")

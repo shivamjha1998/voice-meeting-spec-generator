@@ -75,11 +75,24 @@ def main():
                                     print(f"DEBUG: File Path: {file_path}")
                                     if file_path:
                                         print(f"🗣️ Bot is speaking: {file_path}")
+
+                                        # 1. Unmute before speaking
+                                        if bot:
+                                           bot.unmute_microphone()
+                                           time.sleep(0.5)
+
+                                        # 2. Play Audio
                                         bot.recorder.play_audio(file_path)
+
+                                        # 3. Mute after speakingß
+                                        if bot:
+                                            time.sleep(0.5)
+                                            bot.mute_microphone()
+
                                         # Send signal to clear AI context
                                         redis_client.rpush("conversation_analysis_queue", json.dumps({
                                             "meeting_id": meeting_id,
-                                            "text": "CLEAR_BUFFER_SIGNAL", # Special flag
+                                            "text": "CLEAR_BUFFER_SIGNAL",
                                             "speaker": "System"
                                         }))
                                 else:
@@ -88,7 +101,6 @@ def main():
                             print(f"Playback Error: {e}")
                         
                         # 3. Perform Bot Maintenance (Move mouse, check kicked status)
-                        # This must be done on the main thread because of Playwright Sync API
                         if bot:
                             bot.perform_maintenance()
                         

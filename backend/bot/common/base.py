@@ -89,6 +89,16 @@ class BaseBot(ABC):
         """Abstract method to be implemented by specific bots"""
         pass
 
+    @abstractmethod
+    def mute_microphone(self):
+        """Mute the microphone"""
+        pass
+
+    @abstractmethod
+    def unmute_microphone(self):
+        """Unmute the microphone"""
+        pass
+
     def start_audio_stream(self):
         """Start recording and streaming audio from the meeting"""
         if self.is_connected:
