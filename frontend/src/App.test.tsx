@@ -29,6 +29,16 @@ describe('App Authentication Flow', () => {
         vi.clearAllMocks();
         // Default to root url
         window.history.pushState({}, 'Test page', '/');
+
+        // Mock global fetch to prevent network errors and return dummy data
+        const dummyProjects = [{ id: 1, name: "Test Project", description: "Desc", meetings: [] }];
+        const dummyResponse = {
+            ok: true,
+            json: () => Promise.resolve(dummyProjects),
+        };
+
+        // Use vi.stubGlobal for better TS support and correctness
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(dummyResponse));
     });
 
     it('redirects to login when unauthenticated', async () => {
@@ -54,6 +64,12 @@ describe('App Authentication Flow', () => {
         expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
         expect(screen.getByText('User: test-user-123')).toBeInTheDocument();
         expect(screen.queryByText('Sign in with GitHub')).not.toBeInTheDocument();
+
+        // Wait for fetch to complete to avoid "act" warning
+        // The mock returns 1 project, so we expect "Total Projects: 1"
+        await waitFor(() => {
+            expect(screen.getByText('Total Projects: 1')).toBeInTheDocument();
+        });
     });
 
     it('logs out and redirects to login', async () => {
