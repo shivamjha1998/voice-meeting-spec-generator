@@ -49,6 +49,11 @@ services:
       PYTHONUNBUFFERED: '1'
       DISPLAY: :99
     command: python -m backend.bot.main
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
     volumes:
       - .:/app
 

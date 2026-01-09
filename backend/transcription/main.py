@@ -1,5 +1,6 @@
 import time
 import json
+import sys
 import base64
 import os
 
@@ -78,6 +79,9 @@ def main():
                     
                     audio_buffer = bytearray()
 
+        except KeyboardInterrupt:
+            print("\n🛑 Stopping Transcription Service...")
+            sys.exit(0)
         except Exception as e:
             print(f"⚠️ Error processing chunk: {e}")
             time.sleep(1)

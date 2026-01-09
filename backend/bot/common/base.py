@@ -6,6 +6,9 @@ import redis
 import json
 import base64
 import threading
+import shutil
+import uuid
+import tempfile
 from abc import ABC, abstractmethod
 from playwright.sync_api import sync_playwright
 try:
@@ -23,13 +26,30 @@ class BaseBot(ABC):
         self.context = None
         self.page = None
         self.is_connected = False
-        self.user_data_dir = os.path.join(os.getcwd(), profile_dir)
         
         # Audio & Redis
         # Detect platform for recorder filename or other specifics if needed
         # Derived bots might override filename
         self.recorder = AudioRecorder(filename=f"meeting_{meeting_id}.wav") 
         self.redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+
+        # Create a unique temporary profile copy
+        self.master_profile_path = os.path.join(os.getcwd(), profile_dir)
+        self.temp_profile_dir = os.path.join(tempfile.gettempdir(), f"bot_profile_{meeting_id}_{uuid.uuid4().hex}")
+
+        # Check if master profile exists before copying
+        if os.path.exists(self.master_profile_path):
+            print(f"wb Copying profile to temp: {self.temp_profile_dir}")
+            shutil.copytree(
+                self.master_profile_path,
+                self.temp_profile_dir,
+                ignore=shutil.ignore_patterns("*.lock","Singleton*", "ws_user_data")
+            )
+            self.user_data_dir = self.temp_profile_dir
+        else:
+            # Fallback or error handling
+            print("Warning: Master profile not found, creating new temp profile")
+            self.user_data_dir = self.temp_profile_dir
         
         # OS Detection
         system = platform.system()
@@ -166,5 +186,12 @@ class BaseBot(ABC):
                 self.playwright.stop()
         except Exception as e:
             print(f"⚠️ Error stopping playwright: {e}")
+
+        if hasattr(self, 'temp_profile_dir') and os.path.exists(self.temp_profile_dir):
+            try:
+                shutil.rmtree(self.temp_profile_dir)
+                print(f"🧹 Cleaned up temp profile: {self.temp_profile_dir}")
+            except Exception as e:
+                print(f"⚠️ Failed to cleanup profile: {e}")
         
         print("🛑 Shutdown Complete.")
