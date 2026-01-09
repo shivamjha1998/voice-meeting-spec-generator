@@ -96,7 +96,11 @@ Start all backend services except the bot:
 docker compose up -d
 ```
 
-Then stop the bot container (we'll run it locally):
+> **Note**: To run multiple meeting monitors simultaneously, use: `docker compose up -d --scale bot=5`. This runs 5 instances of the bot container.
+
+Since we are on macOS, we must run the bot locally because Docker on macOS runs inside a Linux VM and cannot access the host's system audio devices (BlackHole) or local browser profile.
+
+Stop the bot container (to run it locally):
 
 ```bash
 docker compose stop bot
@@ -128,7 +132,7 @@ python3 -m backend.bot.main
 ```
 > **Note**: Ensure you're in the project root
 
-> **Why run the bot locally?** The bot requires access to your system's audio devices (BlackHole) and browser profile, which is easier to configure when running locally during development.
+> **Why run the bot locally?** As we are on Mac, we have to run the bot locally because Docker runs in a Linux VM and cannot access the system audio devices (BlackHole) or the local browser profile needed for authentication.
 
 ### Step 2.5: (Optional) Run Transcription Locally with Whisper
 
