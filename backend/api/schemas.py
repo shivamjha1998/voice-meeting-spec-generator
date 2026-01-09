@@ -41,8 +41,8 @@ class Project(ProjectBase):
 
 class UserBase(BaseModel):
     email: str
-    username: str | None = None
-    avatar_url: str | None = None
+    username: Optional[str] = None
+    avatar_url: Optional[str] = None
 
 class UserCreate(UserBase):
     github_token: str

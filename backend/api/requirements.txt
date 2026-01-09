@@ -14,3 +14,4 @@ cryptography
 celery
 python-jose[cryptography]
 passlib[bcrypt]
+pytest-asyncio

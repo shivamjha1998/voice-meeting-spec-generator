@@ -1,6 +1,9 @@
 import pytest
-import json
 from unittest.mock import patch, MagicMock
+from fastapi.testclient import TestClient
+from backend.api.main import app
+from backend.api.auth import create_access_token
+from backend.common import models
 
 def test_websocket_connection(client):
     # Depending on how the websocket is implemented, we might need to mock the Redis PubSub
@@ -51,3 +54,26 @@ def test_websocket_connection(client):
                 # Our mock yields one immediately.
                 data = websocket.receive_text()
                 assert "Hello" in data
+
+def test_websocket_rejects_no_token(client):
+    """Verify 403/Policy Violation if no token provided."""
+    with pytest.raises(Exception): # Starlette TestClient raises on disconnect
+        with client.websocket_connect("/ws/meetings/1") as websocket:
+            pass
+
+def test_websocket_accepts_valid_token(client, db_session, test_user):
+    # 1. Setup Meeting
+    project = models.Project(owner_id=test_user.id)
+    db_session.add(project)
+    db_session.commit()
+    meeting = models.Meeting(project_id=project.id, meeting_url="x")
+    db_session.add(meeting)
+    db_session.commit()
+
+    # 2. Create Token
+    token = create_access_token({"sub": str(test_user.id)})
+
+    # 3. Connect
+    with client.websocket_connect(f"/ws/meetings/{meeting.id}?token={token}") as websocket:
+        # We assume connection is accepted if no error raised immediately
+        pass
